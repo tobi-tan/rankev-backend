@@ -1,0 +1,85 @@
+### Rankev API — smoke test (VS Code REST Client / JetBrains HTTP Client)
+@base = http://localhost:3000
+
+### Health
+GET {{base}}/health
+
+### Register
+# @name register
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "alice@example.com",
+  "password": "supersecret",
+  "handle": "alice",
+  "name": "Alice"
+}
+
+### Login
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice@example.com",
+  "password": "supersecret"
+}
+
+@token = {{login.response.body.accessToken}}
+
+### Me
+GET {{base}}/users/me
+Authorization: Bearer {{token}}
+
+### Create a Rankie
+# @name createRankie
+POST {{base}}/posts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Cà phê sáng chọn gì?",
+  "category": "Đồ uống",
+  "votingType": "single",
+  "chartType": "bar",
+  "options": [
+    { "label": "Cà phê sữa", "emoji": "☕" },
+    { "label": "Bạc xỉu", "emoji": "🥛" },
+    { "label": "Trà đá", "emoji": "🧊" }
+  ]
+}
+
+@rankieId = {{createRankie.response.body.id}}
+@optA = {{createRankie.response.body.options.0.id}}
+
+### Feed
+GET {{base}}/posts?type=rankie&limit=20
+Authorization: Bearer {{token}}
+
+### Get one Rankie
+GET {{base}}/posts/{{rankieId}}
+Authorization: Bearer {{token}}
+
+### Vote
+POST {{base}}/rankies/{{rankieId}}/vote
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "optionIds": ["{{optA}}"]
+}
+
+### My vote
+GET {{base}}/rankies/{{rankieId}}/votes/me
+Authorization: Bearer {{token}}
+
+### Refresh (uses httpOnly cookie set by login)
+POST {{base}}/auth/refresh
+
+### Logout
+DELETE {{base}}/auth/logout
+
+### Delete the Rankie
+DELETE {{base}}/posts/{{rankieId}}
+Authorization: Bearer {{token}}

@@ -1,0 +1,12 @@
+node_modules
+dist
+uploads
+.git
+.env
+.env.*
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+api.http
+README.md

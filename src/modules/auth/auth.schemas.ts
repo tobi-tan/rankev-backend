@@ -1,0 +1,18 @@
+import { z } from 'zod';
+
+export const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(200),
+  handle: z
+    .string()
+    .regex(/^[a-zA-Z0-9_]{3,20}$/, 'Handle must be 3–20 chars: letters, numbers, underscore'),
+  name: z.string().min(1).max(80),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export type RegisterInput = z.infer<typeof registerSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
