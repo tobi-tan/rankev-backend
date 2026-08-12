@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Pool } from 'pg';
-import { env } from '../env';
+import { pgPoolConfig } from './pool-config';
 
 /**
  * Minimal forward-only SQL migration runner.
@@ -17,7 +17,7 @@ async function main() {
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
+  const pool = new Pool(pgPoolConfig());
   const client = await pool.connect();
 
   try {
