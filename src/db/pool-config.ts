@@ -4,23 +4,11 @@ import { env } from '../env';
 /**
  * Cấu hình pg Pool dùng chung cho cả app và migration runner.
  *
- * Bật SSL khi kết nối tới host CÔNG KHAI (không phải localhost hay
- * `*.railway.internal`) — cần thiết khi dùng Railway public proxy hoặc phần lớn
- * Postgres cloud. Local/dev và mạng nội bộ Railway thì tắt SSL.
+ * SSL mặc định TẮT — chạy đúng cho local, mạng nội bộ Railway, và Railway public
+ * proxy (proxy nối plain TCP). Chỉ bật khi đặt biến `DATABASE_SSL=true` (dùng cho
+ * các Postgres cloud bắt buộc TLS, vd Supabase/Neon/RDS).
  */
 export function pgPoolConfig(): PoolConfig {
-  return { connectionString: env.DATABASE_URL, ssl: sslFor(env.DATABASE_URL) };
-}
-
-function sslFor(url: string): PoolConfig['ssl'] {
-  try {
-    const host = new URL(url).hostname;
-    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.railway.internal')) {
-      return false;
-    }
-    // Railway proxy / managed PG dùng chứng chỉ không nằm trong CA mặc định → không verify.
-    return { rejectUnauthorized: false };
-  } catch {
-    return false;
-  }
+  const ssl = env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false;
+  return { connectionString: env.DATABASE_URL, ssl };
 }

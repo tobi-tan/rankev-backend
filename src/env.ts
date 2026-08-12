@@ -9,6 +9,8 @@ const EnvSchema = z.object({
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
   CORS_ORIGIN: z.string().default(''),
+  // Bật SSL cho kết nối Postgres (đặt 'true' khi DB bắt buộc TLS). Mặc định tắt.
+  DATABASE_SSL: z.string().optional(),
 
   // --- Uploads (Cloudflare R2 / S3-compatible). Bỏ trống = lưu local disk (dev). ---
   // Khi deploy Railway, đặt đủ 5 biến này để ảnh không bị mất khi redeploy.
