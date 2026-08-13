@@ -52,11 +52,15 @@ async function main() {
     console.log(count === 0 ? 'Already up to date.' : `Applied ${count} migration(s).`);
   } finally {
     client.release();
-    await pool.end();
+    // Fire-and-forget: đóng pool qua public proxy có thể treo và giữ event loop
+    // sống → chặn `&& node dist/server.js`. Ta thoát tường minh ngay bên dưới.
+    void pool.end().catch(() => {});
   }
 }
 
-main().catch((err) => {
-  console.error('Migration failed:', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Migration failed:', err);
+    process.exit(1);
+  });
