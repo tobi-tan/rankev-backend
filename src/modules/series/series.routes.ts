@@ -10,6 +10,11 @@ import {
 import * as svc from './series.service';
 
 export default async function seriesRoutes(app: FastifyInstance): Promise<void> {
+  // GET /series/mine — series của người đang đăng nhập (để chọn thêm chapter).
+  app.get('/mine', { preHandler: authenticate }, async (req) => {
+    return { items: await svc.listByAuthor(requireUserId(req)) };
+  });
+
   // GET /series/:id
   app.get<{ Params: { id: string } }>('/:id', async (req) => {
     return svc.getSeries(req.params.id);

@@ -1,4 +1,4 @@
-import { and, asc, eq, max } from 'drizzle-orm';
+import { and, asc, count, eq, max } from 'drizzle-orm';
 import { db } from '../../db';
 import { series, seriesPosts, users, posts } from '../../db/schema';
 import { forbidden, notFound } from '../../lib/errors';
@@ -10,6 +10,21 @@ async function assertOwner(seriesId: string, userId: string) {
   if (!s) throw notFound('Series not found');
   if (s.authorId !== userId) throw forbidden('Only the series owner can modify it');
   return s;
+}
+
+/** Danh sách series của một tác giả (để chọn khi thêm chapter mới). */
+export async function listByAuthor(authorId: string): Promise<{ id: string; name: string; postCount: number }[]> {
+  const rows = await db
+    .select({ id: series.id, name: series.name })
+    .from(series)
+    .where(eq(series.authorId, authorId))
+    .orderBy(asc(series.createdAt));
+  const counts = await db
+    .select({ seriesId: seriesPosts.seriesId, c: count() })
+    .from(seriesPosts)
+    .groupBy(seriesPosts.seriesId);
+  const countMap = new Map(counts.map((r) => [r.seriesId, Number(r.c)]));
+  return rows.map((r) => ({ id: r.id, name: r.name, postCount: countMap.get(r.id) ?? 0 }));
 }
 
 export async function createSeries(authorId: string, name: string) {
