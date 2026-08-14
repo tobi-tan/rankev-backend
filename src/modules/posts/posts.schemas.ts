@@ -45,18 +45,19 @@ export const updatePostSchema = z.object({
   subtitle: z.string().max(200).nullable().optional(),
   caption: z.string().max(2000).nullable().optional(),
   category: z.string().max(80).nullable().optional(),
-  media: mediaSchema,
+  media: mediaSchema.nullable(), // null = xoá ảnh bìa
   closesAt: z.coerce.date().nullable().optional(),
   live: z.boolean().optional(),
   sponsored: z.boolean().optional(),
   chartType: z.enum(['bar', 'pie', 'head_to_head']).optional(),
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).optional(),
   hideEndingCount: z.boolean().optional(),
-  // Rankie option text edits, matched by id (no add/remove).
+  // Rankie options — FULL replacement when provided. Có `id` = sửa (giữ phiếu),
+  // không `id` = thêm mới (0 phiếu); option cũ vắng mặt = xoá (bỏ phiếu của nó).
   options: z
     .array(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().uuid().optional(),
         label: z.string().max(120).optional(),
         emoji: z.string().max(16).optional(),
         flag: z.string().max(16).optional(),
@@ -65,6 +66,7 @@ export const updatePostSchema = z.object({
         position: z.number().int().min(0).optional(),
       }),
     )
+    .min(2, 'A Rankie needs at least 2 options')
     .max(50)
     .optional(),
 });

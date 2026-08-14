@@ -218,18 +218,44 @@ export async function updatePost(
       await tx.update(posts).set(patch).where(eq(posts.id, id));
     }
     if (input.options && post.type === 'rankie') {
-      for (const o of input.options) {
-        const { id: optId, ...fields } = o;
-        const optPatch: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(fields)) {
-          if (val !== undefined) optPatch[key] = val;
+      // Reconcile toàn bộ options: giữ phiếu ở option khớp id, thêm option mới (0 phiếu),
+      // xoá option cũ không còn trong danh sách (phiếu ở counter của nó biến mất theo).
+      const existing = await tx
+        .select({ id: rankieOptions.id })
+        .from(rankieOptions)
+        .where(eq(rankieOptions.rankieId, id));
+      const existingIds = new Set(existing.map((e) => e.id));
+      const keepIds = new Set(input.options.filter((o) => o.id).map((o) => o.id as string));
+
+      for (const e of existing) {
+        if (!keepIds.has(e.id)) {
+          await tx.delete(rankieOptions).where(and(eq(rankieOptions.id, e.id), eq(rankieOptions.rankieId, id)));
         }
-        if (Object.keys(optPatch).length > 0) {
+      }
+
+      let pos = 0;
+      for (const o of input.options) {
+        if (o.id && existingIds.has(o.id)) {
+          const optPatch: Record<string, unknown> = { position: pos };
+          for (const key of ['label', 'emoji', 'flag', 'imageUrl', 'color'] as const) {
+            if (o[key] !== undefined) optPatch[key] = o[key];
+          }
           await tx
             .update(rankieOptions)
             .set(optPatch)
-            .where(and(eq(rankieOptions.id, optId), eq(rankieOptions.rankieId, id)));
+            .where(and(eq(rankieOptions.id, o.id), eq(rankieOptions.rankieId, id)));
+        } else {
+          await tx.insert(rankieOptions).values({
+            rankieId: id,
+            label: o.label,
+            emoji: o.emoji,
+            flag: o.flag,
+            imageUrl: o.imageUrl,
+            color: o.color,
+            position: pos,
+          });
         }
+        pos++;
       }
     }
   });
