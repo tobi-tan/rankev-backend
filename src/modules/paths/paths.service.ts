@@ -10,7 +10,7 @@ import {
   pathUnlocks,
   type PathAnswer,
 } from '../../db/schema';
-import { badRequest, notFound } from '../../lib/errors';
+import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { toPathView, type PathView } from './paths.serializer';
 import type { CreatePathInput, CompletePathInput } from './paths.schemas';
 
@@ -98,6 +98,97 @@ export async function createPath(authorId: string, input: CreatePathInput): Prom
   });
 
   return getPathById(postId, authorId);
+}
+
+/** Sửa toàn bộ cấu trúc Path (author only). Giữ số liệu ending theo TÊN (count cũ được
+ *  khôi phục cho ending trùng tên; ending mới bắt đầu 0; ending bị bỏ thì mất count). */
+export async function updatePath(id: string, authorId: string, input: CreatePathInput): Promise<PathView> {
+  const [post] = await db
+    .select({ authorId: posts.authorId, type: posts.type })
+    .from(posts)
+    .where(eq(posts.id, id));
+  if (!post) throw notFound('Path not found');
+  if (post.type !== 'path') throw badRequest('Post is not a path');
+  if (post.authorId !== authorId) throw forbidden('Only the author can edit this path');
+
+  const questionKeys = new Set(input.questions.map((q) => q.key));
+  const endingNames = new Set(input.endings.map((e) => e.name));
+  for (const q of input.questions) {
+    for (const a of q.answers) {
+      if (a.targetType === 'question' && !questionKeys.has(a.targetKey)) {
+        throw badRequest(`Answer targets unknown question "${a.targetKey}"`);
+      }
+      if (a.targetType === 'ending' && !endingNames.has(a.targetKey)) {
+        throw badRequest(`Answer targets unknown ending "${a.targetKey}"`);
+      }
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(posts)
+      .set({
+        title: input.title,
+        subtitle: input.subtitle,
+        caption: input.caption,
+        category: input.category,
+        media: input.media,
+        revealMode: input.revealMode,
+        hideEndingCount: input.hideEndingCount,
+      })
+      .where(eq(posts.id, id));
+
+    // Giữ count ending cũ theo tên.
+    const oldEndings = await tx
+      .select({ name: pathEndings.name, count: pathEndings.count })
+      .from(pathEndings)
+      .where(eq(pathEndings.postId, id));
+    const countByName = new Map(oldEndings.map((e) => [e.name, e.count]));
+
+    // Xoá cấu trúc cũ (answers cascade theo question).
+    await tx.delete(pathQuestions).where(eq(pathQuestions.postId, id));
+    await tx.delete(pathEndings).where(eq(pathEndings.postId, id));
+
+    const keyToId = new Map<string, string>();
+    for (let i = 0; i < input.questions.length; i++) {
+      const q = input.questions[i];
+      const [row] = await tx
+        .insert(pathQuestions)
+        .values({ postId: id, position: i, text: q.text, sceneImageUrl: q.sceneImageUrl, isEntry: q.isEntry ?? i === 0 })
+        .returning({ id: pathQuestions.id });
+      keyToId.set(q.key, row.id);
+    }
+    for (const e of input.endings) {
+      await tx.insert(pathEndings).values({
+        postId: id,
+        name: e.name,
+        emoji: e.emoji,
+        imageUrl: e.imageUrl,
+        comment: e.comment,
+        count: countByName.get(e.name) ?? 0,
+      });
+    }
+    for (const q of input.questions) {
+      const questionId = keyToId.get(q.key)!;
+      for (let j = 0; j < q.answers.length; j++) {
+        const a = q.answers[j];
+        const targetId = a.targetType === 'question' ? keyToId.get(a.targetKey)! : a.targetKey;
+        await tx.insert(pathAnswers).values({
+          questionId,
+          label: a.label,
+          emoji: a.emoji,
+          imageUrl: a.imageUrl,
+          hotspotX: a.hotspotX?.toString(),
+          hotspotY: a.hotspotY?.toString(),
+          targetType: a.targetType,
+          targetId,
+          position: j,
+        });
+      }
+    }
+  });
+
+  return getPathById(id, authorId);
 }
 
 export async function getPathById(id: string, viewerId?: string): Promise<PathView> {

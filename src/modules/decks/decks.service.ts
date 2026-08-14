@@ -8,7 +8,7 @@ import {
   participations,
   type DeckOption,
 } from '../../db/schema';
-import { notFound } from '../../lib/errors';
+import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { toDeckResult, toDeckView, type DeckResult, type DeckView } from './decks.serializer';
 import type { CreateDeckInput, SubmitDeckInput } from './decks.schemas';
 
@@ -60,6 +60,57 @@ export async function createDeck(authorId: string, input: CreateDeckInput): Prom
   });
 
   return getDeckById(postId, authorId);
+}
+
+/** Sửa toàn bộ cấu trúc Deck (author only). Thay câu hỏi/phương án; điểm bài đã nộp cũ
+ *  giữ nguyên (không tự chấm lại). */
+export async function updateDeck(id: string, authorId: string, input: CreateDeckInput): Promise<DeckView> {
+  const [post] = await db
+    .select({ authorId: posts.authorId, type: posts.type })
+    .from(posts)
+    .where(eq(posts.id, id));
+  if (!post) throw notFound('Deck not found');
+  if (post.type !== 'deck') throw badRequest('Post is not a deck');
+  if (post.authorId !== authorId) throw forbidden('Only the author can edit this deck');
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(posts)
+      .set({
+        deckMode: input.deckMode,
+        title: input.title,
+        subtitle: input.subtitle,
+        caption: input.caption,
+        category: input.category,
+        media: input.media,
+        examDurationMinutes: input.examDurationMinutes,
+        passingScore: input.passingScore?.toString(),
+      })
+      .where(eq(posts.id, id));
+
+    // Xoá câu hỏi cũ (options cascade), insert cấu trúc mới.
+    await tx.delete(deckQuestions).where(eq(deckQuestions.postId, id));
+    for (let i = 0; i < input.questions.length; i++) {
+      const q = input.questions[i];
+      const [qRow] = await tx
+        .insert(deckQuestions)
+        .values({ postId: id, position: i, text: q.text, votingType: q.votingType, points: q.points.toString(), imageUrl: q.imageUrl })
+        .returning({ id: deckQuestions.id });
+      for (let j = 0; j < q.options.length; j++) {
+        const o = q.options[j];
+        await tx.insert(deckOptions).values({
+          questionId: qRow.id,
+          label: o.label,
+          emoji: o.emoji,
+          imageUrl: o.imageUrl,
+          correct: o.correct ?? false,
+          position: j,
+        });
+      }
+    }
+  });
+
+  return getDeckById(id, authorId);
 }
 
 async function loadDeck(id: string) {

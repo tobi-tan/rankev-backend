@@ -45,14 +45,24 @@ export default async function postsRoutes(app: FastifyInstance): Promise<void> {
     throw badRequest(`Unsupported post type "${type}"`);
   });
 
-  // PATCH /posts/:id — edit (author only); returns the refreshed view by type
+  // PATCH /posts/:id — edit (author only); returns the refreshed view by type.
+  // Body có type=path/deck (kèm cấu trúc đầy đủ) → sửa toàn bộ câu hỏi/đáp án/kết thúc.
+  // Ngược lại → sửa metadata + options rankie (updatePostSchema).
   app.patch<{ Params: { id: string } }>('/:id', { preHandler: authenticate }, async (req) => {
-    const body = parse(updatePostSchema, req.body);
     const userId = requireUserId(req);
-    const kind = await postsService.updatePost(req.params.id, userId, body);
-    if (kind === 'path') return pathsService.getPathById(req.params.id, userId);
-    if (kind === 'deck') return decksService.getDeckById(req.params.id, userId);
-    return postsService.getRankieById(req.params.id, userId);
+    const id = req.params.id;
+    const bodyType = (req.body as { type?: string } | undefined)?.type;
+    if (bodyType === 'path') {
+      return pathsService.updatePath(id, userId, parse(createPathSchema, req.body));
+    }
+    if (bodyType === 'deck') {
+      return decksService.updateDeck(id, userId, parse(createDeckSchema, req.body));
+    }
+    const body = parse(updatePostSchema, req.body);
+    const kind = await postsService.updatePost(id, userId, body);
+    if (kind === 'path') return pathsService.getPathById(id, userId);
+    if (kind === 'deck') return decksService.getDeckById(id, userId);
+    return postsService.getRankieById(id, userId);
   });
 
   // DELETE /posts/:id — author only
