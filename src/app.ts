@@ -50,7 +50,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   if (env.NODE_ENV !== 'test') {
     // CSP disabled: this is a JSON API (browser app is separate); the only HTML
     // served is the self-contained legal pages, which use inline styles.
-    await app.register(helmet, { contentSecurityPolicy: false });
+    // CSP off (JSON API); CORP = cross-origin để frontend (Vercel) nhúng được ảnh
+    // upload phục vụ từ domain backend (Railway) — nếu không trình duyệt chặn <img>.
+    await app.register(helmet, {
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    });
     await app.register(rateLimit, {
       max: 300,
       timeWindow: '1 minute',
