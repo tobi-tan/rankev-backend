@@ -7,7 +7,8 @@ export interface DeckOptionView {
   emoji: string | null;
   imageUrl: string | null;
   position: number;
-  // NOTE: `correct` is intentionally never serialized (anti-cheat for exams).
+  // `correct` CHỈ trả cho chủ bài (để sửa Exam). Người khác không bao giờ thấy (anti-cheat).
+  correct?: boolean;
 }
 
 export interface DeckQuestionView {
@@ -63,6 +64,7 @@ export function toDeckView(
   questions: DeckQuestion[],
   optionsByQuestion: Map<string, DeckOption[]>,
   myResult?: Participation | null,
+  includeCorrect = false,
 ): DeckView {
   const qViews = questions
     .slice()
@@ -83,6 +85,7 @@ export function toDeckView(
           emoji: o.emoji,
           imageUrl: o.imageUrl,
           position: o.position,
+          ...(includeCorrect ? { correct: o.correct } : {}),
         })),
     }));
 

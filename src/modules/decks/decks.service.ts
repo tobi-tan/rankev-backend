@@ -144,7 +144,9 @@ export async function getDeckById(id: string, viewerId?: string): Promise<DeckVi
     myResult = p ?? null;
   }
 
-  return toDeckView(post, author ?? null, questions, optionsByQuestion, myResult);
+  // Chủ bài được thấy cờ `correct` (để sửa Exam); người khác thì không.
+  const includeCorrect = Boolean(viewerId && viewerId === post.authorId);
+  return toDeckView(post, author ?? null, questions, optionsByQuestion, myResult, includeCorrect);
 }
 
 function setEqual(a: string[], b: string[]): boolean {
