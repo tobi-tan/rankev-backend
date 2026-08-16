@@ -49,6 +49,7 @@ export const posts = pgTable(
     caption: text('caption'),
     category: text('category'),
     media: jsonb('media').$type<{ type?: string; color?: string; emoji?: string; url?: string }>(),
+    voteMarker: jsonb('vote_marker').$type<{ emoji?: string; image?: string }>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     closesAt: timestamp('closes_at', { withTimezone: true }),
     live: boolean('live').notNull().default(false),

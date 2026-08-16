@@ -45,6 +45,7 @@ export async function createRankie(
         sponsored: input.sponsored,
         votingType: input.votingType,
         chartType: input.chartType,
+        voteMarker: input.voteMarker,
       })
       .returning({ id: posts.id });
 
@@ -203,6 +204,7 @@ export async function updatePost(
     'caption',
     'category',
     'media',
+    'voteMarker',
     'closesAt',
     'live',
     'sponsored',

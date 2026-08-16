@@ -21,6 +21,12 @@ const optionSchema = z
     message: 'Each option needs at least a label, emoji, or image',
   });
 
+// Sticker "đã bình chọn" tuỳ chỉnh cho Rankie.
+const voteMarkerSchema = z
+  .object({ emoji: z.string().max(16).optional(), image: z.string().url().optional() })
+  .nullable()
+  .optional();
+
 /** POST /posts — create a Rankie (Sprint 1 supports type=rankie only). */
 export const createRankieSchema = z.object({
   type: z.literal('rankie').default('rankie'),
@@ -34,6 +40,7 @@ export const createRankieSchema = z.object({
   sponsored: z.boolean().optional().default(false),
   votingType: z.enum(['single', 'multiple', 'rating', 'unlimited']).default('single'),
   chartType: z.enum(['bar', 'pie', 'head_to_head']).default('bar'),
+  voteMarker: voteMarkerSchema,
   options: z.array(optionSchema).min(2, 'A Rankie needs at least 2 options').max(50),
 });
 
@@ -46,6 +53,7 @@ export const updatePostSchema = z.object({
   caption: z.string().max(2000).nullable().optional(),
   category: z.string().max(80).nullable().optional(),
   media: mediaSchema.nullable(), // null = xoá ảnh bìa
+  voteMarker: voteMarkerSchema,
   closesAt: z.coerce.date().nullable().optional(),
   live: z.boolean().optional(),
   sponsored: z.boolean().optional(),

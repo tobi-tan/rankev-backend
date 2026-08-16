@@ -21,6 +21,7 @@ export interface RankieView {
   caption: string | null;
   category: string | null;
   media: Post['media'];
+  voteMarker: Post['voteMarker'];
   createdAt: string;
   closesAt: string | null;
   closed: boolean;
@@ -67,6 +68,7 @@ export function toRankieView(
     caption: post.caption,
     category: post.category,
     media: post.media,
+    voteMarker: post.voteMarker,
     createdAt: post.createdAt.toISOString(),
     closesAt: post.closesAt ? post.closesAt.toISOString() : null,
     closed: post.closesAt ? post.closesAt.getTime() <= Date.now() : false,

@@ -30,6 +30,7 @@ export interface FeedSummary {
   subtitle: string | null;
   category: string | null;
   media: unknown;
+  voteMarker: unknown;
   createdAt: string;
   closesAt: string | null;
   closed: boolean;
@@ -137,6 +138,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       subtitle: p.subtitle,
       category: p.category,
       media: p.media,
+      voteMarker: p.voteMarker,
       createdAt: p.createdAt.toISOString(),
       closesAt: p.closesAt ? p.closesAt.toISOString() : null,
       closed: p.closesAt ? p.closesAt.getTime() <= Date.now() : false,
