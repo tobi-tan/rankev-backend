@@ -424,12 +424,34 @@ export const presentationSessions = pgTable(
     participants: integer('participants').notNull().default(0),
     avgScore: numeric('avg_score', { precision: 4, scale: 1 }),
     totalVotes: integer('total_votes'),
+    code: text('code'),
   },
   (t) => ({
     hostIdx: index('presentation_sessions_host_idx').on(t.hostId, t.startedAt),
     postIdx: index('presentation_sessions_post_idx').on(t.postId),
+    codeIdx: index('presentation_sessions_code_idx').on(t.code),
   }),
 );
+
+// Người tham gia THẬT của một phiên trình chiếu trực tiếp (join bằng mã).
+export const liveParticipants = pgTable(
+  'live_participants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => presentationSessions.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    answers: jsonb('answers'),
+    score: numeric('score', { precision: 4, scale: 1 }),
+    correctCount: integer('correct_count'),
+    totalGradable: integer('total_gradable'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ sessionIdx: index('live_participants_session_idx').on(t.sessionId) }),
+);
+export type LiveParticipant = typeof liveParticipants.$inferSelect;
 
 export type DeckQuestion = typeof deckQuestions.$inferSelect;
 export type DeckOption = typeof deckOptions.$inferSelect;

@@ -24,6 +24,7 @@ import rankupsRoutes from './modules/rankups/rankups.routes';
 import seriesRoutes from './modules/series/series.routes';
 import sessionsRoutes from './modules/sessions/sessions.routes';
 import uploadsRoutes, { UPLOAD_DIR } from './modules/uploads/uploads.routes';
+import liveRoutes from './modules/live/live.routes';
 import wsRoutes from './realtime/ws.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -82,6 +83,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(rankupsRoutes);
   await app.register(seriesRoutes, { prefix: '/series' });
   await app.register(sessionsRoutes);
+  await app.register(liveRoutes);
   await app.register(uploadsRoutes, { prefix: '/uploads' });
   await app.register(moderationRoutes);
   await app.register(legalRoutes);
