@@ -273,3 +273,93 @@ export async function getStats(postId: string): Promise<{
         : null,
   };
 }
+
+function toIdArray(a: unknown): string[] {
+  if (Array.isArray(a)) return a.filter((x): x is string => typeof x === 'string');
+  if (typeof a === 'string') return [a];
+  return [];
+}
+
+/**
+ * Bảng điều khiển kết quả cho CHỦ bài: tổng hợp per-question (số chọn từng đáp án)
+ * + phổ điểm. Chỉ chủ bài xem được (kèm cờ `correct`).
+ */
+export async function getDeckResults(postId: string, viewerId: string) {
+  const [post] = await db
+    .select({ id: posts.id, type: posts.type, deckMode: posts.deckMode, authorId: posts.authorId, passingScore: posts.passingScore })
+    .from(posts)
+    .where(eq(posts.id, postId));
+  if (!post || post.type !== 'deck') throw notFound('Deck not found');
+  if (post.authorId !== viewerId) throw forbidden('Chỉ chủ bài mới xem được bảng kết quả');
+
+  const isExam = post.deckMode === 'exam';
+  const questions = await db.select().from(deckQuestions).where(eq(deckQuestions.postId, postId));
+  const qIds = questions.map((q) => q.id);
+  const opts = qIds.length
+    ? await db.select().from(deckOptions).where(inArray(deckOptions.questionId, qIds))
+    : [];
+  const optsByQ = new Map<string, typeof opts>();
+  for (const o of opts) {
+    const l = optsByQ.get(o.questionId) ?? [];
+    l.push(o);
+    optsByQ.set(o.questionId, l);
+  }
+
+  const parts = await db
+    .select({ answers: participations.answers, score: participations.score })
+    .from(participations)
+    .where(eq(participations.postId, postId));
+
+  // Đếm lựa chọn từng đáp án + số câu trả lời tự luận.
+  const optionCounts = new Map<string, number>();
+  const textCounts = new Map<string, number>();
+  for (const p of parts) {
+    const answers = (p.answers ?? {}) as Record<string, unknown>;
+    for (const q of questions) {
+      const given = answers[q.id];
+      if (q.votingType === 'text') {
+        if (typeof given === 'string' && given.trim()) textCounts.set(q.id, (textCounts.get(q.id) ?? 0) + 1);
+      } else {
+        for (const oid of toIdArray(given)) optionCounts.set(oid, (optionCounts.get(oid) ?? 0) + 1);
+      }
+    }
+  }
+
+  const scores = isExam
+    ? parts.filter((p) => p.score != null).map((p) => Number(p.score))
+    : [];
+  const avgScore = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
+
+  return {
+    deckMode: post.deckMode,
+    passingScore: post.passingScore == null ? null : Number(post.passingScore),
+    participants: parts.length,
+    submitted: parts.length,
+    avgScore,
+    scores,
+    questions: questions
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((q) => {
+        const qOpts = (optsByQ.get(q.id) ?? []).slice().sort((a, b) => a.position - b.position);
+        const answered =
+          q.votingType === 'text'
+            ? textCounts.get(q.id) ?? 0
+            : qOpts.reduce((s, o) => s + (optionCounts.get(o.id) ?? 0), 0);
+        return {
+          id: q.id,
+          text: q.text,
+          votingType: q.votingType,
+          points: Number(q.points),
+          answered,
+          options: qOpts.map((o) => ({
+            id: o.id,
+            label: o.label,
+            emoji: o.emoji,
+            correct: isExam ? o.correct : undefined,
+            count: optionCounts.get(o.id) ?? 0,
+          })),
+        };
+      }),
+  };
+}

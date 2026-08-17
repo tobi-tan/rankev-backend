@@ -29,4 +29,9 @@ export default async function decksRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>('/:id/stats', async (req) => {
     return decks.getStats(req.params.id);
   });
+
+  // GET /decks/:id/results — bảng kết quả tổng hợp cho CHỦ bài (per-question + phổ điểm).
+  app.get<{ Params: { id: string } }>('/:id/results', { preHandler: authenticate }, async (req) => {
+    return decks.getDeckResults(req.params.id, requireUserId(req));
+  });
 }
