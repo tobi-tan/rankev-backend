@@ -88,3 +88,19 @@ export function leaveLive(sessionId: string, socket: WebSocket): void {
 export function broadcastLiveUpdate(sessionId: string, results: unknown): void {
   send(liveRoom(sessionId), { type: 'live_update', sessionId, results });
 }
+
+// --- Kênh trạng thái công khai cho người tham gia (chỉ phase/endsAt, KHÔNG lộ kết quả). ---
+const liveStateRoom = (sessionId: string): string => `livestate:${sessionId}`;
+
+export function joinLiveState(sessionId: string, socket: WebSocket): void {
+  join(liveStateRoom(sessionId), socket);
+}
+
+export function leaveLiveState(sessionId: string, socket: WebSocket): void {
+  leave(liveStateRoom(sessionId), socket);
+}
+
+/** Báo người tham gia biết phiên đã bắt đầu / kết thúc (không kèm dữ liệu nhạy cảm). */
+export function broadcastLiveState(sessionId: string, state: unknown): void {
+  send(liveStateRoom(sessionId), { type: 'live_state', sessionId, state });
+}

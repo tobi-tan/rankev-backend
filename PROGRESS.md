@@ -116,6 +116,25 @@ Khi test UI phát hiện: nút Trình chiếu bị khóa ("Chủ bài chưa cho 
 
 - **⚠️ DB local/test đang thiếu migration**: DB local (`localhost:5432`) và test DB chỉ mới có 0001–0005. Đã chạy `npm run db:migrate` cho cả hai (áp 0006 + 0007). Khi deploy Railway nhớ chạy quy trình 2 bước ở §3 nếu prod cũng thiếu.
 
+## 8. Live exam có phòng chờ + công bố kết quả trễ (vừa xong — chưa deploy)
+
+Nâng cấp phiên live: **phòng chờ → thi → công bố**. **Cần migration 0008** (`live_at`, `ends_at` trên `presentation_sessions`).
+
+- **Vòng đời**: `phaseOf()` = `endedAt` hoặc `ends_at` đã qua → `ended`; `live_at` set → `live`; còn lại → `waiting`. `finalizeIfExpired()` tự chốt khi hết giờ (guard `ended_at is null`).
+- **Backend** (`live.service.ts` viết lại + `live.routes.ts`, `ws.routes.ts`, `hub.ts`):
+  - `POST /live-sessions/:id/start` (host, optional `durationMinutes`) → vào `live`, đặt `ends_at`.
+  - `submitLiveAnswers` chấm & lưu server-side nhưng **KHÔNG trả điểm** (`{submitted:true}`), chặn nộp khi `waiting`/`ended`.
+  - `GET /live-sessions/:id/participants/:pid/result` → điểm **chỉ lộ khi `ended`** (kèm `correctByQuestion` để đối chiếu).
+  - `getSessionByCode` trả thêm `phase`/`endsAt`. `endLiveSession` trả snapshot `ended` (không còn `{ended:true}`).
+  - Kênh WS công khai cho participant: `subscribe_live_state` → chỉ `{phase, endsAt}` (không lộ kết quả). Presenter vẫn dùng `subscribe_live`.
+- **Frontend** (`api.js`, `rankev_app.jsx`):
+  - `api.live.start/participantResult`, `subscribeLiveState`.
+  - `LivePresenterView`: 3 giai đoạn (phòng chờ chọn thời lượng + danh sách vào + "Bắt đầu" → đang thi có đồng hồ + "Kết thúc & công bố" → kết quả). Ghi vào Lịch sử trình chiếu qua `onSessionEnd`→`saveDeckSession`.
+  - `LiveJoinView`: code → tên → **chờ** → làm bài (đồng hồ, tự nộp khi hết giờ) → **xem lại bài của mình (chưa điểm)** → **điểm + ✓/✗ khi công bố**.
+  - Sửa hiển thị điểm mỗi câu exam (ô nhập 40→56px, hết cắt "3.3" thành "3.").
+- **Verify trong trình duyệt (2 tab)**: phòng chờ ✓, chờ→thi realtime ✓, nộp không lộ điểm ✓, kết thúc→công bố điểm + xem lại ✓, tự hết giờ ✓ (API), lưu lịch sử ✓. `tsc` sạch, test 31/32 (1 fail có sẵn).
+- **⚠️ Deploy**: có migration 0008 → **phải chạy quy trình 2 bước Railway ở §3**.
+
 ## 6. Ghi chú vận hành
 
 - Tài khoản test live: `live_8r0nb@example.com` / `LiveTest123!`.

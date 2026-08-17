@@ -3,7 +3,7 @@ import type { WebSocket } from 'ws';
 import { verifyAccessToken } from '../lib/tokens';
 import * as hub from './hub';
 import { castVote } from '../modules/rankies/rankies.service';
-import { assertLiveHost, computeLiveResults } from '../modules/live/live.service';
+import { assertLiveHost, computeLiveResults, computeLiveState } from '../modules/live/live.service';
 
 /**
  * WebSocket endpoint for realtime Rankie voting.
@@ -15,11 +15,14 @@ import { assertLiveHost, computeLiveResults } from '../modules/live/live.service
  *   { type: 'vote', rankieId, optionIds }      (requires token)
  *   { type: 'subscribe_live',   sessionId }    (requires token + must be host)
  *   { type: 'unsubscribe_live', sessionId }
+ *   { type: 'subscribe_live_state',   sessionId }  (public — người tham gia)
+ *   { type: 'unsubscribe_live_state', sessionId }
  * Server → client:
  *   { type: 'vote_update', rankieId, options }
  *   { type: 'new_comment', postId, comment }
  *   { type: 'rankie_closed', rankieId }
  *   { type: 'live_update', sessionId, results }
+ *   { type: 'live_state', sessionId, state }
  *   { type: 'error', message }
  */
 export default async function wsRoutes(app: FastifyInstance): Promise<void> {
@@ -94,6 +97,23 @@ export default async function wsRoutes(app: FastifyInstance): Promise<void> {
         }
         case 'unsubscribe_live':
           if (typeof msg.sessionId === 'string') hub.leaveLive(msg.sessionId, socket);
+          break;
+        case 'subscribe_live_state': {
+          // Công khai — người tham gia (không cần đăng nhập). Chỉ nhận phase/endsAt.
+          if (typeof msg.sessionId !== 'string' || !msg.sessionId) {
+            return reply({ type: 'error', message: 'sessionId required' });
+          }
+          hub.joinLiveState(msg.sessionId, socket);
+          try {
+            const state = await computeLiveState(msg.sessionId);
+            reply({ type: 'live_state', sessionId: msg.sessionId, state });
+          } catch (err: any) {
+            reply({ type: 'error', message: err?.message ?? 'subscribe_live_state failed' });
+          }
+          break;
+        }
+        case 'unsubscribe_live_state':
+          if (typeof msg.sessionId === 'string') hub.leaveLiveState(msg.sessionId, socket);
           break;
         default:
           reply({ type: 'error', message: `Unknown message type: ${msg?.type}` });

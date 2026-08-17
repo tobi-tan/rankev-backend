@@ -420,6 +420,10 @@ export const presentationSessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    // live_at: null = đang ở phòng chờ; set khi host bấm "Bắt đầu" → vào giai đoạn thi.
+    liveAt: timestamp('live_at', { withTimezone: true }),
+    // ends_at: tự hết giờ (live_at + thời lượng exam); null = không giới hạn.
+    endsAt: timestamp('ends_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     participants: integer('participants').notNull().default(0),
     avgScore: numeric('avg_score', { precision: 4, scale: 1 }),

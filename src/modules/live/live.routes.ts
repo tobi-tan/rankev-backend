@@ -5,6 +5,7 @@ import { authenticate, requireUserId } from '../../plugins/auth';
 import * as svc from './live.service';
 
 const createSchema = z.object({ postId: z.string().uuid(), name: z.string().max(120).optional() });
+const startSchema = z.object({ durationMinutes: z.number().min(0).max(1440).nullable().optional() });
 const joinSchema = z.object({ name: z.string().max(60).optional() });
 const answersSchema = z.object({
   answers: z.record(z.string(), z.union([z.string(), z.array(z.string()), z.null()])),
@@ -23,10 +24,21 @@ export default async function liveRoutes(app: FastifyInstance): Promise<void> {
     return svc.getSessionByCode(req.params.code);
   });
 
+  // Host bắt đầu bài thi (rời phòng chờ) — chỉ chủ phiên.
+  app.post<{ Params: { id: string } }>('/live-sessions/:id/start', { preHandler: authenticate }, async (req) => {
+    const body = parse(startSchema, req.body ?? {});
+    return svc.startLiveSession(req.params.id, requireUserId(req), body.durationMinutes ?? null);
+  });
+
   // Người tham gia join bằng tên (công khai).
   app.post<{ Params: { id: string } }>('/live-sessions/:id/join', async (req) => {
     const body = parse(joinSchema, req.body);
     return svc.joinSession(req.params.id, body.name ?? 'Ẩn danh');
+  });
+
+  // Người tham gia xem kết quả của mình (công khai) — điểm chỉ lộ khi phiên đã kết thúc.
+  app.get<{ Params: { id: string; pid: string } }>('/live-sessions/:id/participants/:pid/result', async (req) => {
+    return svc.getParticipantResult(req.params.id, req.params.pid);
   });
 
   // Người tham gia nộp bài (công khai).
