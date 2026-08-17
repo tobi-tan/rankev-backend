@@ -27,6 +27,7 @@ export const createDeckSchema = z.object({
     .optional(),
   examDurationMinutes: z.number().int().positive().optional(),
   passingScore: z.number().min(0).optional(),
+  allowGuestPresent: z.boolean().optional(),
   questions: z.array(deckQuestionSchema).min(1).max(100),
 });
 

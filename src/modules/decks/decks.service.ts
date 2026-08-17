@@ -27,6 +27,7 @@ export async function createDeck(authorId: string, input: CreateDeckInput): Prom
         media: input.media,
         examDurationMinutes: input.examDurationMinutes,
         passingScore: input.passingScore?.toString(),
+        allowGuestPresent: input.allowGuestPresent ?? false,
       })
       .returning({ id: posts.id });
 
@@ -85,6 +86,7 @@ export async function updateDeck(id: string, authorId: string, input: CreateDeck
         media: input.media,
         examDurationMinutes: input.examDurationMinutes,
         passingScore: input.passingScore?.toString(),
+        allowGuestPresent: input.allowGuestPresent ?? false,
       })
       .where(eq(posts.id, id));
 

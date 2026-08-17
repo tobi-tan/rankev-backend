@@ -79,11 +79,13 @@ async function finalizeIfExpired(s: SessionRow): Promise<boolean> {
 /** Presenter mở một phiên trực tiếp cho bài của mình → trả về id + mã join. */
 export async function createLiveSession(hostId: string, postId: string, name?: string) {
   const [post] = await db
-    .select({ id: posts.id, authorId: posts.authorId, type: posts.type })
+    .select({ id: posts.id, authorId: posts.authorId, type: posts.type, allowGuestPresent: posts.allowGuestPresent })
     .from(posts)
     .where(eq(posts.id, postId));
   if (!post) throw notFound('Post not found');
-  if (post.authorId !== hostId) throw forbidden('Chỉ tác giả mới trình chiếu bài này');
+  // Chủ bài luôn được; người khác chỉ được nếu chủ bài đã bật "cho phép trình chiếu".
+  if (post.authorId !== hostId && !post.allowGuestPresent)
+    throw forbidden('Chủ bài chưa cho phép người khác trình chiếu bài này');
   if (post.type !== 'deck') throw badRequest('Hiện chỉ hỗ trợ trình chiếu trực tiếp cho Survey/Exam');
   const [row] = await db
     .insert(presentationSessions)
@@ -317,6 +319,7 @@ export async function computeLiveResults(sessionId: string) {
     code: s.code,
     name: s.name,
     phase: phaseOf(s),
+    liveAt: s.liveAt ? s.liveAt.toISOString() : null,
     endsAt: s.endsAt ? s.endsAt.toISOString() : null,
     ended: phaseOf(s) === 'ended',
     joined: parts.length,
@@ -329,6 +332,8 @@ export async function computeLiveResults(sessionId: string) {
       correctCount: p.correctCount,
       totalGradable: p.totalGradable,
       submitted: Boolean(p.submittedAt),
+      joinedAt: p.joinedAt ? p.joinedAt.toISOString() : null,
+      submittedAt: p.submittedAt ? p.submittedAt.toISOString() : null,
       answers: p.answers,
     })),
   };

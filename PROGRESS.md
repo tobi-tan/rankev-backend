@@ -135,6 +135,15 @@ Nâng cấp phiên live: **phòng chờ → thi → công bố**. **Cần migrat
 - **Verify trong trình duyệt (2 tab)**: phòng chờ ✓, chờ→thi realtime ✓, nộp không lộ điểm ✓, kết thúc→công bố điểm + xem lại ✓, tự hết giờ ✓ (API), lưu lịch sử ✓. `tsc` sạch, test 31/32 (1 fail có sẵn).
 - **⚠️ Deploy**: có migration 0008 → **phải chạy quy trình 2 bước Railway ở §3**.
 
+### Tinh chỉnh (đợt 2 — không thêm migration)
+- **Phòng chờ**: dùng `DurationPicker` (giống tạo exam), **mặc định = thời lượng chủ bài đã set**.
+- **Đang thi/kết quả (presenter)**: giao diện kiểu kết quả exam — biểu đồ phân loại điểm (A–F) realtime, số "đạt ≥ điểm đạt", bảng có **hạng · thời gian làm bài mỗi người (⏱ = submittedAt − liveAt) · xếp loại · điểm**. `computeLiveResults` trả thêm `liveAt`, participant có `joinedAt`/`submittedAt`.
+- **Công bố (participant)**: giống kết quả 1 exam — điểm lớn + huy hiệu xếp loại + Đạt/Chưa đạt + xem lại từng câu ✓/✗.
+- **Lưu phiên**: presenter có **ô đặt tên** + "Lưu phiên trình chiếu" (thay vì auto-lưu tên deck). Lịch sử hiện đúng tên + số người + ĐTB.
+- **`allowGuestPresent`**: giờ **lưu thật** (thêm vào `createDeckSchema` + create/update service + `DeckView`). `createLiveSession` cho phép **người khác** mở live nếu chủ bài bật cờ này (không chỉ tác giả). Frontend `apiDeckToProto` map `mine`+`allowGuestPresent` → nút Trình chiếu mở khóa đúng.
+- Sửa hiển thị điểm mỗi câu exam bị cắt "3.3"→"3." (ô 40→56px).
+- **Deck mẫu cứng** (id kiểu `exam1`) vẫn KHÔNG live được (không phải deck thật) — đây là dữ liệu demo offline.
+
 ## 6. Ghi chú vận hành
 
 - Tài khoản test live: `live_8r0nb@example.com` / `LiveTest123!`.

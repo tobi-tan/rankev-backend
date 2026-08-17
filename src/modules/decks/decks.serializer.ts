@@ -44,6 +44,7 @@ export interface DeckView {
   passingScore: number | null;
   author: PublicUser | null;
   mine: boolean;
+  allowGuestPresent: boolean;
   questions: DeckQuestionView[];
   myResult?: DeckResult | null;
 }
@@ -105,6 +106,7 @@ export function toDeckView(
     author: author ? toPublicUser(author) : null,
     // `includeCorrect` chỉ true khi viewerId === authorId → cũng chính là "bài của mình".
     mine: includeCorrect,
+    allowGuestPresent: post.allowGuestPresent,
     questions: qViews,
   };
   if (myResult !== undefined) view.myResult = myResult ? toDeckResult(myResult) : null;
