@@ -83,11 +83,38 @@ Thay bot mô phỏng bằng **người tham gia thật join bằng mã**. Đã v
 
 ## 5. Các bước tiếp theo (đề xuất)
 
-- [ ] **Realtime cho live session**: thay polling 3s bằng WebSocket (server đã có hạ tầng `@fastify/websocket` + `ws.routes`) để presenter thấy người tham gia tức thì.
+- [x] **Realtime cho live session** (xong): presenter theo dõi qua WebSocket, thấy người vào/nộp tức thì; poll 10s chỉ còn là fallback. Chi tiết ở §7.
 - [ ] Mở rộng live session cho **Rankie** (bình chọn trực tiếp) và **Path**.
 - [ ] Màn participant thấy **bảng xếp hạng/kết quả** sau khi nộp (hiện chỉ báo "đã nộp").
 - [ ] Chống trùng: 1 người nộp nhiều lần / quản lý reconnection.
 - [ ] Xem lại các câu hỏi mở còn treo trong memory `rankev-open-questions` (spec §6).
+
+## 7. Realtime cho live session (vừa xong — chưa commit/deploy)
+
+Thay polling 3s bằng WebSocket, tận dụng hạ tầng `src/realtime/` sẵn có. **Không có migration mới.**
+
+- **Backend**
+  - `src/realtime/hub.ts`: thêm room namespaced `live:<sessionId>` — `joinLive` / `leaveLive` / `broadcastLiveUpdate`.
+  - `src/modules/live/live.service.ts`:
+    - Tách `computeLiveResults(sessionId)` (không check quyền) — dùng chung cho HTTP `getLiveResults` (vẫn check host) và broadcast.
+    - Thêm `assertLiveHost(sessionId, hostId)` — để WS xác minh chỉ chủ phiên mới subscribe (kết quả chứa đáp án).
+    - Thêm `pushLiveUpdate(sessionId)` (fire-and-forget) — gọi sau `joinSession`, `submitLiveAnswers`, `endLiveSession` để đẩy snapshot mới cho presenter.
+  - `src/realtime/ws.routes.ts`: thêm `subscribe_live` (cần token + đúng host → gửi snapshot ngay) và `unsubscribe_live`. Server → client: `{ type: 'live_update', sessionId, results }`. **Lưu ý**: toàn bộ thao tác DB trong `subscribe_live` được bọc `try/catch` — `sessionId` rác (không phải UUID) làm Postgres ném lỗi; nếu không bắt, unhandled rejection sẽ **sập cả server** (đã test).
+- **Frontend** (`../rankev-web`)
+  - `src/api.js`: `subscribeLive(sessionId, onUpdate)` trên WS dùng chung; xử lý `live_update`; re-subscribe khi reconnect; export trong default.
+  - `src/rankev_app.jsx` `LivePresenterView`: dùng `api.subscribeLive` cho realtime, giữ poll **10s** làm fallback (trước là 3s).
+- **Còn lại**: người tham gia (join/submit) vẫn dùng HTTP; chính hành động HTTP đó kích hoạt broadcast. Chưa cần đổi phía participant.
+- **Kiểm thử**: `tsc --noEmit` sạch; test suite 31/32 pass (1 fail có sẵn: `posts PATCH metadata`, không liên quan). Đã smoke-test end-to-end trên backend **local**: create→byCode→join→submit→results OK; WS realtime OK (presenter nhận `live_update` tức thì khi có người join); sessionId rác không sập server. **Chưa commit, chưa Redeploy Railway.**
+### Sửa kèm: chủ deck THẬT không trình chiếu được (owner detection)
+
+Khi test UI phát hiện: nút Trình chiếu bị khóa ("Chủ bài chưa cho phép…") và `DeckView` bắt "hoàn thành bài mới được trình chiếu" **ngay cả với chủ bài**, vì frontend chỉ nhận owner qua `author?.id === "me"` (mock), còn deck thật có `author.id` là UUID → luôn bị coi là khách. Hệ quả: không vào được `LivePresenterView` thật → rơi vào presenter bot (`ExamPresenterView`, số liệu ảo).
+
+- **Backend** `decks.serializer.ts`: `DeckView` thêm cờ `mine: boolean` (= `includeCorrect`, tức `viewerId === authorId`). Không cần migration.
+- **Frontend** `rankev_app.jsx`: `apiDeckToProto` dùng `mine: !!d.mine`; `DeckView` `isOwner = deck.mine || author==="me"`; nút Trình chiếu trong `DeckView` route deck thật → `livePresent` (đồng bộ với nút TopBar).
+- **Đã verify trong trình duyệt** (2 tab): chủ mở Trình chiếu → `LivePresenterView` thật (mã join, 0/0/— **không bot**); người thật join+nộp ở tab kia → presenter cập nhật realtime (1 đã vào → 1 đã nộp → điểm 1/10).
+- **Đã gỡ bot ảo**: `ExamPresenterView` (bỏ mô phỏng phòng chờ `JOINING_NAMES` + kết quả ảo `genParticipants`) và `DeckPresenterView` (bỏ mô phỏng người tham gia + phản hồi). Verify: phòng chờ mock exam hiện "0 người", không còn tên ảo. `PathPresenterView` vẫn còn counter ảo (Path chưa có live thật) — gỡ khi mở rộng live cho Path.
+
+- **⚠️ DB local/test đang thiếu migration**: DB local (`localhost:5432`) và test DB chỉ mới có 0001–0005. Đã chạy `npm run db:migrate` cho cả hai (áp 0006 + 0007). Khi deploy Railway nhớ chạy quy trình 2 bước ở §3 nếu prod cũng thiếu.
 
 ## 6. Ghi chú vận hành
 

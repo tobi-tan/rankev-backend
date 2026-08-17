@@ -9,6 +9,7 @@ import {
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { getDeckById } from '../decks/decks.service';
+import * as hub from '../../realtime/hub';
 
 // Mã join 6 ký tự (bỏ ký tự dễ nhầm: 0/O, 1/I).
 function genCode(): string {
@@ -67,6 +68,7 @@ export async function joinSession(sessionId: string, name: string) {
     .insert(liveParticipants)
     .values({ sessionId, name: (name || '').trim().slice(0, 60) || 'Ẩn danh' })
     .returning({ id: liveParticipants.id });
+  void pushLiveUpdate(sessionId); // báo presenter có người mới vào
   return { participantId: row.id };
 }
 
@@ -129,17 +131,37 @@ export async function submitLiveAnswers(
     })
     .where(eq(liveParticipants.id, participantId));
 
+  void pushLiveUpdate(sessionId); // báo presenter có bài nộp mới
   return { score, correctCount: correct, totalGradable: gradable };
 }
 
-/** Presenter xem kết quả trực tiếp (poll). */
+/** Presenter xem kết quả trực tiếp (poll). Có kiểm tra quyền chủ phiên. */
 export async function getLiveResults(sessionId: string, hostId: string) {
+  const [s] = await db
+    .select({ hostId: presentationSessions.hostId })
+    .from(presentationSessions)
+    .where(eq(presentationSessions.id, sessionId));
+  if (!s) throw notFound('Session not found');
+  if (s.hostId !== hostId) throw forbidden('Chỉ chủ phiên mới xem được kết quả');
+  return computeLiveResults(sessionId);
+}
+
+/** Chỉ đúng chủ phiên mới được subscribe realtime (kết quả chứa đáp án). */
+export async function assertLiveHost(sessionId: string, hostId: string): Promise<boolean> {
+  const [s] = await db
+    .select({ hostId: presentationSessions.hostId })
+    .from(presentationSessions)
+    .where(eq(presentationSessions.id, sessionId));
+  return Boolean(s && s.hostId === hostId);
+}
+
+/** Tính snapshot kết quả (KHÔNG kiểm tra quyền — chỉ gọi từ nội bộ đã xác thực). */
+export async function computeLiveResults(sessionId: string) {
   const [s] = await db
     .select()
     .from(presentationSessions)
     .where(eq(presentationSessions.id, sessionId));
   if (!s) throw notFound('Session not found');
-  if (s.hostId !== hostId) throw forbidden('Chỉ chủ phiên mới xem được kết quả');
   const parts = await db
     .select()
     .from(liveParticipants)
@@ -187,5 +209,16 @@ export async function endLiveSession(sessionId: string, hostId: string) {
     .update(presentationSessions)
     .set({ endedAt: new Date(), participants: parts.length, avgScore: avgScore === null ? null : avgScore.toString() })
     .where(eq(presentationSessions.id, sessionId));
+  void pushLiveUpdate(sessionId); // báo presenter (và mọi tab) phiên đã kết thúc
   return { ended: true };
+}
+
+/** Tính lại snapshot và phát cho mọi presenter đang theo dõi phiên (fire-and-forget). */
+export async function pushLiveUpdate(sessionId: string): Promise<void> {
+  try {
+    const results = await computeLiveResults(sessionId);
+    hub.broadcastLiveUpdate(sessionId, results);
+  } catch {
+    /* phiên có thể vừa bị xoá — bỏ qua, không ảnh hưởng request */
+  }
 }

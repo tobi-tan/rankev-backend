@@ -3,6 +3,7 @@ import type { WebSocket } from 'ws';
 import { verifyAccessToken } from '../lib/tokens';
 import * as hub from './hub';
 import { castVote } from '../modules/rankies/rankies.service';
+import { assertLiveHost, computeLiveResults } from '../modules/live/live.service';
 
 /**
  * WebSocket endpoint for realtime Rankie voting.
@@ -12,10 +13,13 @@ import { castVote } from '../modules/rankies/rankies.service';
  *   { type: 'subscribe_rankie',   rankieId }
  *   { type: 'unsubscribe_rankie', rankieId }
  *   { type: 'vote', rankieId, optionIds }      (requires token)
+ *   { type: 'subscribe_live',   sessionId }    (requires token + must be host)
+ *   { type: 'unsubscribe_live', sessionId }
  * Server → client:
  *   { type: 'vote_update', rankieId, options }
  *   { type: 'new_comment', postId, comment }
  *   { type: 'rankie_closed', rankieId }
+ *   { type: 'live_update', sessionId, results }
  *   { type: 'error', message }
  */
 export default async function wsRoutes(app: FastifyInstance): Promise<void> {
@@ -69,6 +73,28 @@ export default async function wsRoutes(app: FastifyInstance): Promise<void> {
           }
           break;
         }
+        case 'subscribe_live': {
+          if (!userId) return reply({ type: 'error', message: 'Authentication required' });
+          if (typeof msg.sessionId !== 'string' || !msg.sessionId) {
+            return reply({ type: 'error', message: 'sessionId required' });
+          }
+          try {
+            // Bọc toàn bộ thao tác DB: sessionId rác (không phải UUID) khiến
+            // Postgres ném lỗi — không được để nó crash cả server.
+            const isHost = await assertLiveHost(msg.sessionId, userId);
+            if (!isHost) return reply({ type: 'error', message: 'Chỉ chủ phiên mới theo dõi được' });
+            hub.joinLive(msg.sessionId, socket);
+            // Gửi ngay snapshot hiện tại để presenter không phải chờ sự kiện kế tiếp.
+            const results = await computeLiveResults(msg.sessionId);
+            reply({ type: 'live_update', sessionId: msg.sessionId, results });
+          } catch (err: any) {
+            reply({ type: 'error', message: err?.message ?? 'subscribe_live failed' });
+          }
+          break;
+        }
+        case 'unsubscribe_live':
+          if (typeof msg.sessionId === 'string') hub.leaveLive(msg.sessionId, socket);
+          break;
         default:
           reply({ type: 'error', message: `Unknown message type: ${msg?.type}` });
       }

@@ -71,3 +71,20 @@ export function broadcastNewComment(postId: string, comment: unknown): void {
 export function broadcastRankieClosed(rankieId: string): void {
   send(rankieId, { type: 'rankie_closed', rankieId });
 }
+
+// --- Live presentation sessions ---
+// Namespaced room key so a session id can never collide with a rankie id.
+const liveRoom = (sessionId: string): string => `live:${sessionId}`;
+
+export function joinLive(sessionId: string, socket: WebSocket): void {
+  join(liveRoom(sessionId), socket);
+}
+
+export function leaveLive(sessionId: string, socket: WebSocket): void {
+  leave(liveRoom(sessionId), socket);
+}
+
+/** Fan out a fresh results snapshot to every presenter watching this session. */
+export function broadcastLiveUpdate(sessionId: string, results: unknown): void {
+  send(liveRoom(sessionId), { type: 'live_update', sessionId, results });
+}

@@ -43,6 +43,7 @@ export interface DeckView {
   examDurationMinutes: number | null;
   passingScore: number | null;
   author: PublicUser | null;
+  mine: boolean;
   questions: DeckQuestionView[];
   myResult?: DeckResult | null;
 }
@@ -102,6 +103,8 @@ export function toDeckView(
     examDurationMinutes: post.examDurationMinutes,
     passingScore: post.passingScore === null ? null : Number(post.passingScore),
     author: author ? toPublicUser(author) : null,
+    // `includeCorrect` chỉ true khi viewerId === authorId → cũng chính là "bài của mình".
+    mine: includeCorrect,
     questions: qViews,
   };
   if (myResult !== undefined) view.myResult = myResult ? toDeckResult(myResult) : null;
