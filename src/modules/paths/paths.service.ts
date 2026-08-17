@@ -11,6 +11,7 @@ import {
   type PathAnswer,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
+import { getPostSeries } from '../series/series.service';
 import { toPathView, type PathView } from './paths.serializer';
 import type { CreatePathInput, CompletePathInput } from './paths.schemas';
 
@@ -226,7 +227,9 @@ export async function getPathById(id: string, viewerId?: string): Promise<PathVi
     };
   }
 
-  return toPathView(post, author ?? null, questions, answersByQuestion, endings, extras);
+  const view = toPathView(post, author ?? null, questions, answersByQuestion, endings, extras);
+  const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
+  return { ...view, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
 }
 
 export async function completePath(

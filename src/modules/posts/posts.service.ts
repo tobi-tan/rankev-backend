@@ -6,6 +6,7 @@ import { encodeCursor, decodeCursor } from '../../lib/cursor';
 import { getBlockedIds } from '../moderation/moderation.service';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 import { toRankieView, type RankieView } from './posts.serializer';
+import { getPostSeries } from '../series/series.service';
 import type { CreateRankieInput, ListPostsQuery } from './posts.schemas';
 
 async function fetchAuthor(authorId: string): Promise<PublicUser | null> {
@@ -86,7 +87,9 @@ export async function getRankieById(id: string, viewerId?: string): Promise<Rank
     fetchBookmarked(id, viewerId),
   ]);
 
-  return toRankieView(post, author, options, myVote, bookmarked);
+  const view = toRankieView(post, author, options, myVote, bookmarked);
+  const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
+  return { ...view, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
 }
 
 async function fetchBookmarked(

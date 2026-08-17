@@ -45,6 +45,8 @@ export interface DeckView {
   author: PublicUser | null;
   mine: boolean;
   allowGuestPresent: boolean;
+  seriesId?: string | null;
+  seriesName?: string | null;
   questions: DeckQuestionView[];
   myResult?: DeckResult | null;
 }

@@ -29,6 +29,8 @@ export interface RankieView {
   sponsored: boolean;
   votingType: Post['votingType'];
   chartType: Post['chartType'];
+  seriesId?: string | null;
+  seriesName?: string | null;
   author: PublicUser | null;
   options: RankieOptionView[];
   totalVotes: number;

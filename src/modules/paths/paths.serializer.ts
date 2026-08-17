@@ -47,6 +47,8 @@ export interface PathView {
   questions: PathQuestionView[];
   endings: PathEndingView[];
   entryQuestionId: string | null;
+  seriesId?: string | null;
+  seriesName?: string | null;
   myEnding?: string | null;
   unlockedEndings?: string[];
 }

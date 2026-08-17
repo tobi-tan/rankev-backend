@@ -8,6 +8,8 @@ import {
   deckQuestions,
   participations,
   comments,
+  series,
+  seriesPosts,
   type Post,
   type User,
 } from '../../db/schema';
@@ -36,6 +38,8 @@ export interface FeedSummary {
   closed: boolean;
   live: boolean;
   votingType: 'single' | 'multiple' | 'rating' | 'unlimited' | null;
+  seriesId: string | null;
+  seriesName: string | null;
   author: PublicUser | null;
   /** rankie=total votes, path/deck=participants */
   engagement: number;
@@ -120,6 +124,16 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   const partsBy = new Map(parts.map((r) => [r.id, Number(r.c)]));
   const commentsBy = new Map(commentRows.map((r) => [r.id, Number(r.c)]));
 
+  // Series của mỗi post (qua bảng join series_posts) — để web nhóm chapter.
+  const seriesRows = allIds.length
+    ? await db
+        .select({ postId: seriesPosts.postId, seriesId: seriesPosts.seriesId, name: series.name })
+        .from(seriesPosts)
+        .innerJoin(series, eq(series.id, seriesPosts.seriesId))
+        .where(inArray(seriesPosts.postId, allIds))
+    : [];
+  const seriesBy = new Map(seriesRows.map((r) => [r.postId, { seriesId: r.seriesId, seriesName: r.name }]));
+
   return rows.map((r) => {
     const p = r.post;
     const agg = rankieAgg.get(p.id);
@@ -144,6 +158,8 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       closed: p.closesAt ? p.closesAt.getTime() <= Date.now() : false,
       live: p.live,
       votingType: p.votingType,
+      seriesId: seriesBy.get(p.id)?.seriesId ?? null,
+      seriesName: seriesBy.get(p.id)?.seriesName ?? null,
       author: r.author ? toPublicUser(r.author) : null,
       engagement,
       size,

@@ -5,6 +5,19 @@ import { forbidden, notFound } from '../../lib/errors';
 import { toPublicUser } from '../users/users.serializer';
 import { summariesByIds, type FeedSummary } from '../feed/feed.service';
 
+/** Series (chapter) mà một post thuộc về — để đính kèm vào view chi tiết. */
+export async function getPostSeries(
+  postId: string,
+): Promise<{ seriesId: string; seriesName: string } | null> {
+  const [row] = await db
+    .select({ seriesId: seriesPosts.seriesId, name: series.name })
+    .from(seriesPosts)
+    .innerJoin(series, eq(series.id, seriesPosts.seriesId))
+    .where(eq(seriesPosts.postId, postId))
+    .limit(1);
+  return row ? { seriesId: row.seriesId, seriesName: row.name } : null;
+}
+
 async function assertOwner(seriesId: string, userId: string) {
   const [s] = await db.select().from(series).where(eq(series.id, seriesId));
   if (!s) throw notFound('Series not found');
