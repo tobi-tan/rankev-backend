@@ -31,6 +31,8 @@ export interface FeedSummary {
   deckMode: 'survey' | 'exam' | null;
   title: string;
   subtitle: string | null;
+  /** mô tả (caption) của bài — để feed card hiện đủ tiêu đề + mô tả + ảnh như các loại khác */
+  caption: string | null;
   category: string | null;
   media: unknown;
   voteMarker: unknown;
@@ -161,6 +163,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       deckMode: p.deckMode,
       title: p.title,
       subtitle: p.subtitle,
+      caption: p.caption,
       category: p.category,
       media: p.media,
       voteMarker: p.voteMarker,
