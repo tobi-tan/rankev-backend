@@ -5,6 +5,7 @@ import {
   users,
   rankieOptions,
   pathEndings,
+  pathQuestions,
   deckQuestions,
   participations,
   comments,
@@ -38,6 +39,8 @@ export interface FeedSummary {
   closed: boolean;
   live: boolean;
   votingType: 'single' | 'multiple' | 'rating' | 'unlimited' | null;
+  /** số câu hỏi (deck & path); rankie = 0. Khác `size` vì path.size = số kết thúc. */
+  questionCount: number;
   seriesId: string | null;
   seriesName: string | null;
   author: PublicUser | null;
@@ -62,7 +65,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   const deckIds = rows.filter((r) => r.post.type === 'deck').map((r) => r.post.id);
   const allIds = rows.map((r) => r.post.id);
 
-  const [rankieOptRows, pathEnds, deckQs, parts, commentRows] = await Promise.all([
+  const [rankieOptRows, pathEnds, pathQs, deckQs, parts, commentRows] = await Promise.all([
     rankieIds.length
       ? db
           .select({
@@ -81,6 +84,13 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
           .from(pathEndings)
           .where(inArray(pathEndings.postId, pathIds))
           .groupBy(pathEndings.postId)
+      : Promise.resolve([] as { id: string; c: number }[]),
+    pathIds.length
+      ? db
+          .select({ id: pathQuestions.postId, c: count() })
+          .from(pathQuestions)
+          .where(inArray(pathQuestions.postId, pathIds))
+          .groupBy(pathQuestions.postId)
       : Promise.resolve([] as { id: string; c: number }[]),
     deckIds.length
       ? db
@@ -120,6 +130,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   }
 
   const endsBy = new Map(pathEnds.map((r) => [r.id, Number(r.c)]));
+  const pathQsBy = new Map(pathQs.map((r) => [r.id, Number(r.c)]));
   const qsBy = new Map(deckQs.map((r) => [r.id, Number(r.c)]));
   const partsBy = new Map(parts.map((r) => [r.id, Number(r.c)]));
   const commentsBy = new Map(commentRows.map((r) => [r.id, Number(r.c)]));
@@ -158,6 +169,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       closed: p.closesAt ? p.closesAt.getTime() <= Date.now() : false,
       live: p.live,
       votingType: p.votingType,
+      questionCount: p.type === 'deck' ? (qsBy.get(p.id) ?? 0) : p.type === 'path' ? (pathQsBy.get(p.id) ?? 0) : 0,
       seriesId: seriesBy.get(p.id)?.seriesId ?? null,
       seriesName: seriesBy.get(p.id)?.seriesName ?? null,
       author: r.author ? toPublicUser(r.author) : null,
