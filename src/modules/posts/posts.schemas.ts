@@ -9,6 +9,8 @@ const mediaSchema = z
   })
   .optional();
 
+const refTypeSchema = z.enum(['post', 'user', 'comment']);
+
 const optionSchema = z
   .object({
     label: z.string().max(120).optional(),
@@ -16,9 +18,12 @@ const optionSchema = z
     flag: z.string().max(16).optional(),
     imageUrl: z.string().url().optional(),
     color: z.string().max(32).optional(),
+    // Lựa chọn trỏ tới một thực thể Rankev (bài viết/user/comment) — "Lưu vào Rankie".
+    refType: refTypeSchema.optional(),
+    refId: z.string().max(64).optional(),
   })
-  .refine((o) => Boolean(o.label || o.emoji || o.imageUrl), {
-    message: 'Each option needs at least a label, emoji, or image',
+  .refine((o) => Boolean(o.label || o.emoji || o.imageUrl || o.refId), {
+    message: 'Each option needs at least a label, emoji, image, or reference',
   });
 
 // Sticker "đã bình chọn" tuỳ chỉnh cho Rankie.
@@ -71,6 +76,8 @@ export const updatePostSchema = z.object({
         flag: z.string().max(16).optional(),
         imageUrl: z.string().url().optional(),
         color: z.string().max(32).optional(),
+        refType: refTypeSchema.optional(),
+        refId: z.string().max(64).optional(),
         position: z.number().int().min(0).optional(),
       }),
     )

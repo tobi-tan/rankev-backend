@@ -88,6 +88,10 @@ export const rankieOptions = pgTable(
     position: integer('position').notNull().default(0),
     votes: bigint('votes', { mode: 'number' }).notNull().default(0),
     voters: integer('voters').notNull().default(0),
+    // Option có thể trỏ tới một thực thể Rankev thay vì chỉ text: 'post' | 'user' | 'comment'.
+    // Polymorphic → không FK. `label` vẫn lưu ảnh chụp tên/tiêu đề để feed hiển thị không cần hydrate.
+    refType: text('ref_type'),
+    refId: text('ref_id'),
   },
   (t) => ({
     rankieIdx: index('rankie_options_rankie_idx').on(t.rankieId, t.position),

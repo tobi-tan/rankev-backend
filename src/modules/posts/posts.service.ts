@@ -58,6 +58,8 @@ export async function createRankie(
         flag: o.flag,
         imageUrl: o.imageUrl,
         color: o.color,
+        refType: o.refType,
+        refId: o.refId,
         position: i,
       })),
     );
@@ -242,7 +244,7 @@ export async function updatePost(
       for (const o of input.options) {
         if (o.id && existingIds.has(o.id)) {
           const optPatch: Record<string, unknown> = { position: pos };
-          for (const key of ['label', 'emoji', 'flag', 'imageUrl', 'color'] as const) {
+          for (const key of ['label', 'emoji', 'flag', 'imageUrl', 'color', 'refType', 'refId'] as const) {
             if (o[key] !== undefined) optPatch[key] = o[key];
           }
           await tx
@@ -257,6 +259,8 @@ export async function updatePost(
             flag: o.flag,
             imageUrl: o.imageUrl,
             color: o.color,
+            refType: o.refType,
+            refId: o.refId,
             position: pos,
           });
         }

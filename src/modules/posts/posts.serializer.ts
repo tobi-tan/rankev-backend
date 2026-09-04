@@ -11,6 +11,9 @@ export interface RankieOptionView {
   position: number;
   votes: number;
   voters: number;
+  /** Nếu option là "Lưu vào Rankie" từ một thực thể: 'post' | 'user' | 'comment' + id. */
+  refType: string | null;
+  refId: string | null;
 }
 
 export interface RankieView {
@@ -49,6 +52,8 @@ export function toOptionView(o: RankieOption): RankieOptionView {
     position: o.position,
     votes: Number(o.votes),
     voters: o.voters,
+    refType: o.refType,
+    refId: o.refId,
   };
 }
 
