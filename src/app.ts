@@ -19,6 +19,7 @@ import commentsRoutes from './modules/comments/comments.routes';
 import bookmarksRoutes from './modules/bookmarks/bookmarks.routes';
 import pathsRoutes from './modules/paths/paths.routes';
 import decksRoutes from './modules/decks/decks.routes';
+import tournamentsRoutes from './modules/tournaments/tournaments.routes';
 import feedRoutes from './modules/feed/feed.routes';
 import rankupsRoutes from './modules/rankups/rankups.routes';
 import seriesRoutes from './modules/series/series.routes';
@@ -79,6 +80,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(rankiesRoutes, { prefix: '/rankies' });
   await app.register(pathsRoutes, { prefix: '/paths' });
   await app.register(decksRoutes, { prefix: '/decks' });
+  await app.register(tournamentsRoutes, { prefix: '/tournaments' });
   await app.register(feedRoutes);
   await app.register(rankupsRoutes);
   await app.register(seriesRoutes, { prefix: '/series' });

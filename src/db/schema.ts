@@ -461,6 +461,39 @@ export const liveParticipants = pgTable(
 );
 export type LiveParticipant = typeof liveParticipants.$inferSelect;
 
+// ---------- Giải đấu (đấu loại trực tiếp) — mỗi ván là một Rankie 1v1 thật ----------
+export const tournaments = pgTable('tournaments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  authorId: uuid('author_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  category: text('category'),
+  status: text('status').notNull().default('active'), // 'active' | 'done'
+  currentRound: integer('current_round').notNull().default(0),
+  championRef: jsonb('champion_ref'), // đối thủ vô địch | null
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const tournamentMatches = pgTable(
+  'tournament_matches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tournamentId: uuid('tournament_id')
+      .notNull()
+      .references(() => tournaments.id, { onDelete: 'cascade' }),
+    round: integer('round').notNull(),
+    position: integer('position').notNull(),
+    aRef: jsonb('a_ref'), // { name, emoji, color, refType?, refId? } | null (bye/chờ)
+    bRef: jsonb('b_ref'),
+    rankiePostId: uuid('rankie_post_id').references(() => posts.id, { onDelete: 'set null' }),
+    winnerRef: jsonb('winner_ref'), // đối thủ thắng | null (chưa chốt)
+  },
+  (t) => ({ tourIdx: index('tournament_matches_tour_idx').on(t.tournamentId, t.round, t.position) }),
+);
+export type Tournament = typeof tournaments.$inferSelect;
+export type TournamentMatch = typeof tournamentMatches.$inferSelect;
+
 export type DeckQuestion = typeof deckQuestions.$inferSelect;
 export type DeckOption = typeof deckOptions.$inferSelect;
 export type Participation = typeof participations.$inferSelect;
