@@ -145,6 +145,7 @@ export async function getTournament(id: string) {
   const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
   return {
     id: t.id,
+    authorId: t.authorId,
     title: t.title,
     category: t.category,
     status: t.status,

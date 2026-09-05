@@ -494,6 +494,70 @@ export const tournamentMatches = pgTable(
 export type Tournament = typeof tournaments.$inferSelect;
 export type TournamentMatch = typeof tournamentMatches.$inferSelect;
 
+// ---------- Nhắn tin (chat) ----------
+// Cuộc trò chuyện: DM (2 người) hoặc nhóm. DM title = null (FE tự lấy tên đối phương).
+export const conversations = pgTable('conversations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  isGroup: boolean('is_group').notNull().default(false),
+  title: text('title'),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const conversationMembers = pgTable(
+  'conversation_members',
+  {
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.conversationId, t.userId] }),
+    userIdx: index('conversation_members_user_idx').on(t.userId),
+  }),
+);
+
+// Tin nhắn: kind 'text' | 'share' (chia sẻ bài: refType/refId) | 'poll' (bình chọn nhanh).
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('text'),
+    body: text('body'),
+    refType: text('ref_type'), // share: 'rankie' | 'path' | 'deck' | 'post'
+    refId: text('ref_id'),
+    poll: jsonb('poll'), // poll: { question, options: [{ label, emoji }] }
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ convIdx: index('messages_conv_idx').on(t.conversationId, t.createdAt) }),
+);
+
+export const messagePollVotes = pgTable(
+  'message_poll_votes',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    optionIdx: integer('option_idx').notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.messageId, t.userId] }) }),
+);
+
 export type DeckQuestion = typeof deckQuestions.$inferSelect;
 export type DeckOption = typeof deckOptions.$inferSelect;
 export type Participation = typeof participations.$inferSelect;
@@ -502,3 +566,5 @@ export type PresentationSession = typeof presentationSessions.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type RankieOption = typeof rankieOptions.$inferSelect;
 export type Vote = typeof votes.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;
+export type Message = typeof messages.$inferSelect;

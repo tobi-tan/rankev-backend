@@ -104,3 +104,24 @@ export function leaveLiveState(sessionId: string, socket: WebSocket): void {
 export function broadcastLiveState(sessionId: string, state: unknown): void {
   send(liveStateRoom(sessionId), { type: 'live_state', sessionId, state });
 }
+
+// --- Chat: phòng theo hội thoại (mọi thành viên đang mở khung chat) ---
+const chatRoom = (conversationId: string): string => `chat:${conversationId}`;
+
+export function joinChat(conversationId: string, socket: WebSocket): void {
+  join(chatRoom(conversationId), socket);
+}
+
+export function leaveChat(conversationId: string, socket: WebSocket): void {
+  leave(chatRoom(conversationId), socket);
+}
+
+/** Tin nhắn mới trong hội thoại → đẩy cho mọi thành viên đang mở. */
+export function broadcastChatMessage(conversationId: string, message: unknown): void {
+  send(chatRoom(conversationId), { type: 'chat_message', conversationId, message });
+}
+
+/** Cập nhật phiếu poll trong chat → đẩy tally mới. */
+export function broadcastChatPoll(conversationId: string, poll: unknown): void {
+  send(chatRoom(conversationId), { type: 'chat_poll_update', conversationId, poll });
+}

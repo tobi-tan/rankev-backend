@@ -115,6 +115,14 @@ export default async function wsRoutes(app: FastifyInstance): Promise<void> {
         case 'unsubscribe_live_state':
           if (typeof msg.sessionId === 'string') hub.leaveLiveState(msg.sessionId, socket);
           break;
+        case 'subscribe_chat':
+          // Nghe tin nhắn/poll realtime của một hội thoại (cần đăng nhập).
+          if (!userId) return reply({ type: 'error', message: 'Authentication required' });
+          if (typeof msg.conversationId === 'string') hub.joinChat(msg.conversationId, socket);
+          break;
+        case 'unsubscribe_chat':
+          if (typeof msg.conversationId === 'string') hub.leaveChat(msg.conversationId, socket);
+          break;
         default:
           reply({ type: 'error', message: `Unknown message type: ${msg?.type}` });
       }
