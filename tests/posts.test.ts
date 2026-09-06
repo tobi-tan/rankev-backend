@@ -75,7 +75,8 @@ describe('posts + rankie', () => {
       method: 'PATCH',
       url: `/posts/${rk.id}`,
       headers: bearer(owner.accessToken),
-      payload: { title: 'New title', category: 'Y', options: [{ id: rk.options[0].id, label: 'Edited' }] },
+      // options là FULL replacement (min 2) — gửi đủ cả 2, chỉ đổi nhãn option đầu.
+      payload: { title: 'New title', category: 'Y', options: [{ id: rk.options[0].id, label: 'Edited' }, { id: rk.options[1].id, label: rk.options[1].label }] },
     });
     expect(edit.statusCode).toBe(200);
     expect(edit.json().title).toBe('New title');
