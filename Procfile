@@ -1,1 +1,1 @@
-web: node dist/server.js
+web: node dist/db/migrate.js && node dist/server.js
