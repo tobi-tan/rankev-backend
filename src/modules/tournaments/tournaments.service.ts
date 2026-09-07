@@ -240,13 +240,21 @@ export async function getTournament(id: string, viewerId?: string) {
       winnerRef: r.winnerRef,
       votes: r.rankiePostId ? voteMap.get(r.rankiePostId) ?? { a: 0, b: 0 } : { a: 0, b: 0 },
       myPick: r.rankiePostId ? pickByPost.get(r.rankiePostId) ?? null : null,
+      opensAt: r.opensAt ? r.opensAt.toISOString() : null,
       closesAt: r.rankiePostId ? (closesByPost.get(r.rankiePostId)?.toISOString() ?? null) : null,
     })),
   };
 }
 
-// Chủ giải hẹn lịch một trận: đặt/bỏ giờ ĐÓNG bình chọn (closesAt của rankie ván).
-export async function setMatchSchedule(id: string, viewerId: string, round: number, position: number, closesAt: Date | null) {
+// Chủ giải hẹn lịch một trận: giờ MỞ (opensAt trên match) + giờ ĐÓNG (closesAt trên
+// rankie ván). Chỉ cập nhật field được gửi (undefined = giữ nguyên).
+export async function setMatchSchedule(
+  id: string,
+  viewerId: string,
+  round: number,
+  position: number,
+  sched: { opensAt?: Date | null; closesAt?: Date | null },
+) {
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) throw notFound('Tournament not found');
   if (t.authorId !== viewerId) throw forbidden('Chỉ chủ giải mới đặt lịch được');
@@ -256,7 +264,8 @@ export async function setMatchSchedule(id: string, viewerId: string, round: numb
     .where(and(eq(tournamentMatches.tournamentId, id), eq(tournamentMatches.round, round), eq(tournamentMatches.position, position)));
   if (!m) throw notFound('Không tìm thấy trận');
   if (!m.rankiePostId) throw badRequest('Trận chưa có sẵn để đặt lịch');
-  await db.update(posts).set({ closesAt }).where(eq(posts.id, m.rankiePostId));
+  if (sched.closesAt !== undefined) await db.update(posts).set({ closesAt: sched.closesAt }).where(eq(posts.id, m.rankiePostId));
+  if (sched.opensAt !== undefined) await db.update(tournamentMatches).set({ opensAt: sched.opensAt }).where(eq(tournamentMatches.id, m.id));
   return getTournament(id, viewerId);
 }
 

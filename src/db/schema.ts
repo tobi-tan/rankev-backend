@@ -491,6 +491,7 @@ export const tournamentMatches = pgTable(
     bRef: jsonb('b_ref'),
     rankiePostId: uuid('rankie_post_id').references(() => posts.id, { onDelete: 'set null' }),
     winnerRef: jsonb('winner_ref'), // đối thủ thắng | null (chưa chốt)
+    opensAt: timestamp('opens_at', { withTimezone: true }), // giờ mở bình chọn | null = mở ngay
   },
   (t) => ({ tourIdx: index('tournament_matches_tour_idx').on(t.tournamentId, t.round, t.position) }),
 );

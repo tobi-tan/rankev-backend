@@ -42,7 +42,7 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
     { preHandler: authenticate },
     async (req) => {
       const body = parse(setMatchScheduleSchema, req.body);
-      return tournaments.setMatchSchedule(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body.closesAt);
+      return tournaments.setMatchSchedule(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body);
     },
   );
 

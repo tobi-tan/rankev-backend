@@ -27,7 +27,9 @@ export const setMatchResultSchema = z.object({
   winner: z.enum(['a', 'b']),
 });
 
-// Chủ giải hẹn lịch một trận: giờ đóng bình chọn (ISO) | null = vô hạn.
+// Chủ giải hẹn lịch một trận: giờ mở + giờ đóng bình chọn (ISO) | null. Gửi field nào
+// thì cập nhật field đó (undefined = giữ nguyên).
 export const setMatchScheduleSchema = z.object({
-  closesAt: z.coerce.date().nullable(),
+  opensAt: z.coerce.date().nullable().optional(),
+  closesAt: z.coerce.date().nullable().optional(),
 });
