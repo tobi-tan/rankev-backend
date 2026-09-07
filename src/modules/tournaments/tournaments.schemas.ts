@@ -26,3 +26,8 @@ export const createTournamentSchema = z.object({
 export const setMatchResultSchema = z.object({
   winner: z.enum(['a', 'b']),
 });
+
+// Chủ giải hẹn lịch một trận: giờ đóng bình chọn (ISO) | null = vô hạn.
+export const setMatchScheduleSchema = z.object({
+  closesAt: z.coerce.date().nullable(),
+});

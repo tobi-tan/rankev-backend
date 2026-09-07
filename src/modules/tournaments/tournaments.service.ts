@@ -188,6 +188,13 @@ export async function getTournament(id: string, viewerId?: string) {
   const voteMap = new Map<string, { a: number; b: number }>();
   await Promise.all(postIds.map(async (pid) => voteMap.set(pid, await matchVotes(pid))));
 
+  // Lịch mỗi trận: giờ đóng bình chọn (closesAt của rankie ván) — cho phép hẹn lịch từng trận.
+  const closesByPost = new Map<string, Date | null>();
+  if (postIds.length) {
+    const pr = await db.select({ id: posts.id, closesAt: posts.closesAt }).from(posts).where(inArray(posts.id, postIds));
+    for (const p of pr) closesByPost.set(p.id, p.closesAt);
+  }
+
   // Dự đoán của người xem trên mỗi ván ('a' | 'b') — để so với kết quả thật.
   const pickByPost = new Map<string, 'a' | 'b'>();
   if (viewerId && postIds.length) {
@@ -233,8 +240,24 @@ export async function getTournament(id: string, viewerId?: string) {
       winnerRef: r.winnerRef,
       votes: r.rankiePostId ? voteMap.get(r.rankiePostId) ?? { a: 0, b: 0 } : { a: 0, b: 0 },
       myPick: r.rankiePostId ? pickByPost.get(r.rankiePostId) ?? null : null,
+      closesAt: r.rankiePostId ? (closesByPost.get(r.rankiePostId)?.toISOString() ?? null) : null,
     })),
   };
+}
+
+// Chủ giải hẹn lịch một trận: đặt/bỏ giờ ĐÓNG bình chọn (closesAt của rankie ván).
+export async function setMatchSchedule(id: string, viewerId: string, round: number, position: number, closesAt: Date | null) {
+  const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
+  if (!t) throw notFound('Tournament not found');
+  if (t.authorId !== viewerId) throw forbidden('Chỉ chủ giải mới đặt lịch được');
+  const [m] = await db
+    .select()
+    .from(tournamentMatches)
+    .where(and(eq(tournamentMatches.tournamentId, id), eq(tournamentMatches.round, round), eq(tournamentMatches.position, position)));
+  if (!m) throw notFound('Không tìm thấy trận');
+  if (!m.rankiePostId) throw badRequest('Trận chưa có sẵn để đặt lịch');
+  await db.update(posts).set({ closesAt }).where(eq(posts.id, m.rankiePostId));
+  return getTournament(id, viewerId);
 }
 
 // Chủ giải nhập/ sửa KẾT QUẢ THẬT của một trận (giải dự đoán). Không tự đẩy vòng;

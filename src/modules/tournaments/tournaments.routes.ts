@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
-import { createTournamentSchema, setMatchResultSchema } from './tournaments.schemas';
+import { createTournamentSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
 import * as tournaments from './tournaments.service';
 
 export default async function tournamentsRoutes(app: FastifyInstance): Promise<void> {
@@ -33,6 +33,16 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
     async (req) => {
       const body = parse(setMatchResultSchema, req.body);
       return tournaments.setMatchResult(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body.winner);
+    },
+  );
+
+  // POST /tournaments/:id/matches/:round/:position/schedule — chủ giải hẹn giờ đóng trận
+  app.post<{ Params: { id: string; round: string; position: string } }>(
+    '/:id/matches/:round/:position/schedule',
+    { preHandler: authenticate },
+    async (req) => {
+      const body = parse(setMatchScheduleSchema, req.body);
+      return tournaments.setMatchSchedule(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body.closesAt);
     },
   );
 
