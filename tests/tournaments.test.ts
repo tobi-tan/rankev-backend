@@ -95,6 +95,18 @@ describe('tournaments', () => {
     expect(m0.winnerRef.name).toBe('B'); // FE: myPick 'a' → aRef=A ≠ winner B → đoán sai
   });
 
+  it('supports comments on the tournament (thẻ đấu)', async () => {
+    const owner = await registerUser(app);
+    const fan = await registerUser(app);
+    const t = (await app.inject({ method: 'POST', url: '/tournaments', headers: bearer(owner.accessToken), payload: { title: 'Bàn luận', contestants: [{ name: 'A' }, { name: 'B' }] } })).json();
+    const c = await app.inject({ method: 'POST', url: `/tournaments/${t.id}/comments`, headers: bearer(fan.accessToken), payload: { text: 'Đội A vô địch!' } });
+    expect(c.statusCode).toBe(201);
+    expect(c.json()).toMatchObject({ text: 'Đội A vô địch!', tournamentId: t.id, postId: null });
+    const list = await app.inject({ method: 'GET', url: `/tournaments/${t.id}/comments` });
+    expect(list.json().items.length).toBe(1);
+    expect(list.json().items[0].text).toBe('Đội A vô địch!');
+  });
+
   it('reuses settings for rounds created on advance', async () => {
     const owner = await registerUser(app);
     const res = await app.inject({

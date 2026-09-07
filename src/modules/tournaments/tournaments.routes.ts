@@ -3,6 +3,8 @@ import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
 import { createTournamentSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
 import * as tournaments from './tournaments.service';
+import { createCommentSchema, listCommentsQuerySchema } from '../comments/comments.schemas';
+import * as commentsSvc from '../comments/comments.service';
 
 export default async function tournamentsRoutes(app: FastifyInstance): Promise<void> {
   // POST /tournaments — tạo giải đấu (mỗi ván vòng đầu là 1 Rankie 1v1 thật)
@@ -49,5 +51,18 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
   // POST /tournaments/:id/advance — chốt vòng hiện tại (chủ giải)
   app.post<{ Params: { id: string } }>('/:id/advance', { preHandler: authenticate }, async (req) => {
     return tournaments.advanceRound(req.params.id, requireUserId(req));
+  });
+
+  // GET /tournaments/:id/comments — bình luận trên thẻ đấu
+  app.get<{ Params: { id: string } }>('/:id/comments', { preHandler: optionalAuth }, async (req) => {
+    const query = parse(listCommentsQuerySchema, req.query);
+    return commentsSvc.listTournamentComments(req.params.id, query, req.user?.id);
+  });
+
+  // POST /tournaments/:id/comments — bình luận trên thẻ đấu
+  app.post<{ Params: { id: string } }>('/:id/comments', { preHandler: authenticate }, async (req, reply) => {
+    const body = parse(createCommentSchema, req.body);
+    const comment = await commentsSvc.createTournamentComment(requireUserId(req), req.params.id, body);
+    return reply.code(201).send(comment);
   });
 }

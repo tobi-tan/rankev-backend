@@ -225,6 +225,7 @@ export async function getTournament(id: string, viewerId?: string) {
     authorId: t.authorId,
     title: t.title,
     category: t.category,
+    caption: settings.caption ?? null,
     status: t.status,
     advanceMode: settings.advanceMode ?? 'vote',
     currentRound: t.currentRound,

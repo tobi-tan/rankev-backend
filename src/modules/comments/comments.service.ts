@@ -1,6 +1,6 @@
 import { and, arrayContains, desc, eq, inArray, isNull, lt, or, sql, count } from 'drizzle-orm';
 import { db } from '../../db';
-import { comments, commentRanks, pathUnlocks, posts, users, type Comment } from '../../db/schema';
+import { comments, commentRanks, pathUnlocks, posts, tournaments, users, type Comment } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { decodeCursor, encodeCursor } from '../../lib/cursor';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
@@ -124,6 +124,69 @@ export async function createComment(
     })
     .returning();
 
+  const [author] = await db.select().from(users).where(eq(users.id, userId));
+  return toCommentView(row, author ? toPublicUser(author) : null, 0, 0);
+}
+
+// ---------- Bình luận trên GIẢI ĐẤU (thẻ đấu như một bài) ----------
+async function assertTournament(id: string): Promise<void> {
+  const [t] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, id));
+  if (!t) throw notFound('Tournament not found');
+}
+
+export async function listTournamentComments(
+  tournamentId: string,
+  query: ListCommentsQuery,
+  viewerId?: string,
+): Promise<{ items: CommentView[]; nextCursor: string | null }> {
+  const conditions = [eq(comments.tournamentId, tournamentId)];
+  conditions.push(query.parentId ? eq(comments.parentId, query.parentId) : isNull(comments.parentId));
+  const cursor = query.cursor ? decodeCursor(query.cursor) : null;
+  if (cursor) {
+    const d = new Date(cursor.createdAt);
+    conditions.push(or(lt(comments.createdAt, d), and(eq(comments.createdAt, d), lt(comments.id, cursor.id)))!);
+  }
+  const rows = await db
+    .select({ comment: comments, author: users })
+    .from(comments)
+    .leftJoin(users, eq(users.id, comments.userId))
+    .where(and(...conditions))
+    .orderBy(desc(comments.createdAt), desc(comments.id))
+    .limit(query.limit + 1);
+
+  const hasMore = rows.length > query.limit;
+  const page = hasMore ? rows.slice(0, query.limit) : rows;
+  const ids = page.map((r) => r.comment.id);
+  const [replyRows, myRankRows] = await Promise.all([
+    ids.length
+      ? db.select({ parentId: comments.parentId, c: count() }).from(comments).where(inArray(comments.parentId, ids)).groupBy(comments.parentId)
+      : Promise.resolve([] as { parentId: string | null; c: number }[]),
+    viewerId && ids.length
+      ? db.select({ commentId: commentRanks.commentId, value: commentRanks.value }).from(commentRanks).where(and(eq(commentRanks.userId, viewerId), inArray(commentRanks.commentId, ids)))
+      : Promise.resolve([] as { commentId: string; value: number }[]),
+  ]);
+  const replyCountBy = new Map(replyRows.map((r) => [r.parentId as string, Number(r.c)]));
+  const myRankBy = new Map(myRankRows.map((r) => [r.commentId, r.value]));
+  const items = page.map((r) => toCommentView(r.comment, r.author ? toPublicUser(r.author) : null, myRankBy.get(r.comment.id) ?? 0, replyCountBy.get(r.comment.id) ?? 0));
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? encodeCursor({ createdAt: last.comment.createdAt.toISOString(), id: last.comment.id }) : null;
+  return { items, nextCursor };
+}
+
+export async function createTournamentComment(
+  userId: string,
+  tournamentId: string,
+  input: CreateCommentInput,
+): Promise<CommentView> {
+  await assertTournament(tournamentId);
+  if (input.parentId) {
+    const [parent] = await db.select({ id: comments.id, tournamentId: comments.tournamentId }).from(comments).where(eq(comments.id, input.parentId));
+    if (!parent || parent.tournamentId !== tournamentId) throw badRequest('Invalid parent comment');
+  }
+  const [row] = await db
+    .insert(comments)
+    .values({ tournamentId, userId, parentId: input.parentId, text: input.text?.trim() || null, imageUrl: input.imageUrl, emoji: input.emoji, supports: input.supports })
+    .returning();
   const [author] = await db.select().from(users).where(eq(users.id, userId));
   return toCommentView(row, author ? toPublicUser(author) : null, 0, 0);
 }

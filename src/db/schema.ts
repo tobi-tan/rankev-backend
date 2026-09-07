@@ -122,9 +122,9 @@ export const comments = pgTable(
   'comments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    postId: uuid('post_id')
-      .notNull()
-      .references(() => posts.id, { onDelete: 'cascade' }),
+    // Một comment thuộc POST hoặc GIẢI ĐẤU (một trong hai).
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    tournamentId: uuid('tournament_id').references(() => tournaments.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

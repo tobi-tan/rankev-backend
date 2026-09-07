@@ -3,7 +3,8 @@ import type { PublicUser } from '../users/users.serializer';
 
 export interface CommentView {
   id: string;
-  postId: string;
+  postId: string | null;
+  tournamentId?: string | null;
   parentId: string | null;
   author: PublicUser | null;
   text: string | null;
@@ -28,6 +29,7 @@ export function toCommentView(
   return {
     id: c.id,
     postId: c.postId,
+    tournamentId: c.tournamentId,
     parentId: c.parentId,
     author,
     text: deleted ? null : c.text,
