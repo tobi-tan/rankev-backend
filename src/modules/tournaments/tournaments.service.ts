@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, max } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, max } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   tournaments,
@@ -7,9 +7,11 @@ import {
   rankieOptions,
   series,
   seriesPosts,
+  users,
   type TournamentMatch,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
+import { toPublicUser } from '../users/users.serializer';
 
 // Một đối thủ trong giải: text thuần hoặc tham chiếu thực thể Rankev ("Lưu vào Rankie").
 export interface Contestant {
@@ -285,4 +287,57 @@ export async function listMyTournaments(authorId: string) {
     .where(eq(tournaments.authorId, authorId))
     .orderBy(asc(tournaments.createdAt));
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+// Danh sách giải đấu cho FEED (mỗi giải = 1 thẻ). Kèm tác giả + tóm tắt số vòng/số ván
+// + tổng phiếu, để web render thẻ giải mà không cần nạp cả bảng phân nhánh.
+export async function listTournamentFeed(limit = 30) {
+  const tRows = await db
+    .select({ t: tournaments, author: users })
+    .from(tournaments)
+    .leftJoin(users, eq(users.id, tournaments.authorId))
+    .orderBy(desc(tournaments.createdAt))
+    .limit(limit);
+  const ids = tRows.map((r) => r.t.id);
+  const matchRows = ids.length
+    ? await db
+        .select({ tid: tournamentMatches.tournamentId, round: tournamentMatches.round, postId: tournamentMatches.rankiePostId })
+        .from(tournamentMatches)
+        .where(inArray(tournamentMatches.tournamentId, ids))
+    : [];
+  const postIds = matchRows.map((m) => m.postId).filter((x): x is string => !!x);
+  const voteRows = postIds.length
+    ? await db
+        .select({ postId: rankieOptions.rankieId, votes: rankieOptions.votes })
+        .from(rankieOptions)
+        .where(inArray(rankieOptions.rankieId, postIds))
+    : [];
+  const votesByPost = new Map<string, number>();
+  for (const v of voteRows) votesByPost.set(v.postId, (votesByPost.get(v.postId) ?? 0) + Number(v.votes));
+
+  const agg = new Map<string, { rounds: number; matchCount: number; votes: number }>();
+  for (const m of matchRows) {
+    const a = agg.get(m.tid) ?? { rounds: 0, matchCount: 0, votes: 0 };
+    a.rounds = Math.max(a.rounds, m.round + 1);
+    if (m.postId) { a.matchCount++; a.votes += votesByPost.get(m.postId) ?? 0; }
+    agg.set(m.tid, a);
+  }
+
+  return tRows.map((r) => {
+    const a = agg.get(r.t.id) ?? { rounds: 0, matchCount: 0, votes: 0 };
+    return {
+      id: r.t.id,
+      type: 'tournament' as const,
+      title: r.t.title,
+      category: r.t.category,
+      status: r.t.status,
+      currentRound: r.t.currentRound,
+      championRef: r.t.championRef,
+      rounds: a.rounds,
+      matchCount: a.matchCount,
+      totalVotes: a.votes,
+      createdAt: r.t.createdAt.toISOString(),
+      author: r.author ? toPublicUser(r.author) : null,
+    };
+  });
 }

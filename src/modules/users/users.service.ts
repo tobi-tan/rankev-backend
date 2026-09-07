@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, posts, participations } from '../../db/schema';
 import { conflict, notFound } from '../../lib/errors';
@@ -35,7 +35,14 @@ export async function getUserPosts(authorId: string): Promise<FeedSummary[]> {
   const rows = await db
     .select({ id: posts.id })
     .from(posts)
-    .where(eq(posts.authorId, authorId))
+    .where(
+      and(
+        eq(posts.authorId, authorId),
+        // Ẩn các bài-ván của giải đấu — giải hiện dưới dạng series/thẻ giải, không phải
+        // từng ván lẻ trong lưới hồ sơ (đồng bộ với feed).
+        sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`,
+      ),
+    )
     .orderBy(desc(posts.createdAt), desc(posts.id))
     .limit(100);
   return summariesByIds(rows.map((r) => r.id));

@@ -190,6 +190,9 @@ export async function listFeed(
 ): Promise<{ items: FeedSummary[]; nextCursor: string | null }> {
   const conditions = [] as any[];
   if (query.type) conditions.push(eq(posts.type, query.type));
+  // Ẩn các bài-ván của giải đấu khỏi feed chính — giải đấu hiện dưới dạng MỘT thẻ giải
+  // riêng (các ván xem trong bảng phân nhánh), tránh feed bị ngập bởi từng ván lẻ.
+  conditions.push(sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`);
   if (viewerId) {
     const blocked = await getBlockedIds(viewerId);
     if (blocked.length) conditions.push(notInArray(posts.authorId, blocked));

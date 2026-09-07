@@ -11,6 +11,11 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
     return tournaments.createTournament(requireUserId(req), body);
   });
 
+  // GET /tournaments — danh sách giải đấu cho feed (công khai, mỗi giải = 1 thẻ)
+  app.get('/', async () => {
+    return { items: await tournaments.listTournamentFeed() };
+  });
+
   // GET /tournaments/mine — giải của tôi
   app.get('/mine', { preHandler: authenticate }, async (req) => {
     return { items: await tournaments.listMyTournaments(requireUserId(req)) };
