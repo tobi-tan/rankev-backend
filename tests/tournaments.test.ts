@@ -49,6 +49,13 @@ describe('tournaments', () => {
     const messi = post.options.find((o: any) => o.label === 'Messi');
     expect(messi.imageUrl).toBe('https://example.com/messi.png');
     expect(messi.emoji).toBe('🐐');
+
+    // Mỗi giải TỰ là một series: ván (rankie) thuộc series tên = tên giải.
+    expect(post.seriesName).toBe('GOAT?');
+    expect(post.seriesId).toBeTruthy();
+    const ser = await app.inject({ method: 'GET', url: `/series/${post.seriesId}` });
+    expect(ser.statusCode).toBe(200);
+    expect(ser.json().posts.length).toBe(2); // 2 ván bán kết là 2 "chương"
   });
 
   it('reuses settings for rounds created on advance', async () => {

@@ -1,10 +1,12 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, max } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   tournaments,
   tournamentMatches,
   posts,
   rankieOptions,
+  series,
+  seriesPosts,
   type TournamentMatch,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
@@ -24,6 +26,9 @@ export interface TournamentSettings {
   caption?: string | null;
   closesInHours?: number | null;
   allowGuestPresent?: boolean;
+  // Mỗi giải đấu tự là một series: mọi ván (rankie) được gom vào series này làm "chương".
+  seriesId?: string | null;
+  seriesName?: string | null;
 }
 
 export interface CreateTournamentInput extends TournamentSettings {
@@ -102,20 +107,27 @@ export async function createTournament(authorId: string, input: CreateTournament
   if (cs.length < 2) throw badRequest('Cần ít nhất 2 đối thủ');
   if (cs.length > 32) throw badRequest('Tối đa 32 đối thủ');
 
-  const settings: TournamentSettings = {
-    caption: input.caption ?? null,
-    closesInHours: input.closesInHours ?? null,
-    allowGuestPresent: input.allowGuestPresent ?? false,
-  };
-  const meta: MatchMeta = { ...settings, category: input.category ?? null };
-
   const rounds = seedRounds(cs);
   const id = await db.transaction(async (tx) => {
+    // Mỗi giải đấu tự là một SERIES: các ván (rankie) là "chương". Nhờ vậy giải xuất
+    // hiện như một series gọn (không phải N bài rời) — tái dùng hạ tầng series sẵn có.
+    const [ser] = await tx.insert(series).values({ name: input.title, authorId }).returning({ id: series.id });
+
+    const settings: TournamentSettings = {
+      caption: input.caption ?? null,
+      closesInHours: input.closesInHours ?? null,
+      allowGuestPresent: input.allowGuestPresent ?? false,
+      seriesId: ser.id,
+      seriesName: input.title,
+    };
+    const meta: MatchMeta = { ...settings, category: input.category ?? null };
+
     const [t] = await tx
       .insert(tournaments)
       .values({ authorId, title: input.title, category: input.category, settings })
       .returning({ id: tournaments.id });
 
+    let seriesPos = 0;
     for (let r = 0; r < rounds.length; r++) {
       for (let p = 0; p < rounds[r].length; p++) {
         const cell = rounds[r][p];
@@ -123,6 +135,7 @@ export async function createTournament(authorId: string, input: CreateTournament
         let winnerRef: Contestant | null = null;
         if (cell.a && cell.b) {
           rankiePostId = await createMatchRankie(tx, authorId, cell.a, cell.b, meta);
+          await tx.insert(seriesPosts).values({ seriesId: ser.id, postId: rankiePostId, position: seriesPos++ });
         } else if (cell.a && !cell.b) {
           winnerRef = cell.a; // bye → tự thắng
         } else if (!cell.a && cell.b) {
@@ -236,14 +249,23 @@ export async function advanceRound(id: string, viewerId: string) {
       if (i % 2 === 0) nm.aRef = m.winnerRef as never;
       else nm.bRef = m.winnerRef as never;
     });
+    const settings = (t.settings as TournamentSettings) ?? {};
+    const meta: MatchMeta = { ...settings, category: t.category };
+    // Vị trí kế tiếp trong series của giải (chương mới nối vào cuối).
+    let seriesPos = 0;
+    if (settings.seriesId) {
+      const [row] = await tx.select({ m: max(seriesPosts.position) }).from(seriesPosts).where(eq(seriesPosts.seriesId, settings.seriesId));
+      seriesPos = (row?.m ?? -1) + 1;
+    }
     for (const nm of next) {
       const a = nm.aRef as Contestant | null;
       const b = nm.bRef as Contestant | null;
       let rankiePostId = nm.rankiePostId;
       let winnerRef = nm.winnerRef as Contestant | null;
-      const meta: MatchMeta = { ...((t.settings as TournamentSettings) ?? {}), category: t.category };
-      if (a && b && !rankiePostId) rankiePostId = await createMatchRankie(tx, t.authorId, a, b, meta);
-      else if (a && !b) winnerRef = a;
+      if (a && b && !rankiePostId) {
+        rankiePostId = await createMatchRankie(tx, t.authorId, a, b, meta);
+        if (settings.seriesId) await tx.insert(seriesPosts).values({ seriesId: settings.seriesId, postId: rankiePostId, position: seriesPos++ });
+      } else if (a && !b) winnerRef = a;
       else if (!a && b) winnerRef = b;
       await tx
         .update(tournamentMatches)
