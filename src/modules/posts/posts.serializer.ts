@@ -35,6 +35,8 @@ export interface RankieView {
   chartType: Post['chartType'];
   seriesId?: string | null;
   seriesName?: string | null;
+  tournamentId?: string | null;
+  tournamentTitle?: string | null;
   author: PublicUser | null;
   options: RankieOptionView[];
   totalVotes: number;

@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { bookmarks, posts, rankieOptions, users, votes, type RankieOption } from '../../db/schema';
+import { bookmarks, posts, rankieOptions, users, votes, tournaments, tournamentMatches, type RankieOption } from '../../db/schema';
 import { forbidden, notFound } from '../../lib/errors';
 import { encodeCursor, decodeCursor } from '../../lib/cursor';
 import { getBlockedIds } from '../moderation/moderation.service';
@@ -91,7 +91,20 @@ export async function getRankieById(id: string, viewerId?: string): Promise<Rank
 
   const view = toRankieView(post, author, options, myVote, bookmarked);
   const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
-  return { ...view, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
+  // Nếu rankie này là một VÁN của giải đấu → đính kèm id/tên giải để web cho quay lại thẻ đấu.
+  const [tm] = await db
+    .select({ tournamentId: tournamentMatches.tournamentId, title: tournaments.title })
+    .from(tournamentMatches)
+    .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
+    .where(eq(tournamentMatches.rankiePostId, id))
+    .limit(1);
+  return {
+    ...view,
+    seriesId: s?.seriesId ?? null,
+    seriesName: s?.seriesName ?? null,
+    tournamentId: tm?.tournamentId ?? null,
+    tournamentTitle: tm?.title ?? null,
+  };
 }
 
 async function fetchBookmarked(
