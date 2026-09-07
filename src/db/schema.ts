@@ -472,6 +472,9 @@ export const tournaments = pgTable('tournaments', {
   status: text('status').notNull().default('active'), // 'active' | 'done'
   currentRound: integer('current_round').notNull().default(0),
   championRef: jsonb('champion_ref'), // đối thủ vô địch | null
+  // Cấu hình dùng lại cho mọi ván (kể cả vòng sau): { caption, closesInHours,
+  // allowGuestPresent } — để rankie mỗi ván kế thừa giống bài rankie thường.
+  settings: jsonb('settings'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

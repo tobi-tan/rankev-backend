@@ -14,14 +14,27 @@ export interface Contestant {
   name: string;
   emoji?: string | null;
   color?: string | null;
+  imageUrl?: string | null;
   refType?: string | null;
   refId?: string | null;
 }
 
-export interface CreateTournamentInput {
+// Cấu hình dùng lại cho mọi ván (vòng 0 và các vòng sinh khi chốt vòng).
+export interface TournamentSettings {
+  caption?: string | null;
+  closesInHours?: number | null;
+  allowGuestPresent?: boolean;
+}
+
+export interface CreateTournamentInput extends TournamentSettings {
   title: string;
   category?: string;
   contestants: Contestant[];
+}
+
+// Ngữ cảnh áp cho rankie mỗi ván (giống bài rankie thường: danh mục, mô tả, hạn, trình chiếu).
+interface MatchMeta extends TournamentSettings {
+  category?: string | null;
 }
 
 const OPT_COLORS = ['#5FC9A8', '#E2725B', '#E7BC55', '#6FB6E8', '#A594E0', '#E28FB8', '#8CC463', '#E89C4A'];
@@ -51,7 +64,9 @@ async function createMatchRankie(
   authorId: string,
   a: Contestant,
   b: Contestant,
+  meta: MatchMeta = {},
 ): Promise<string> {
+  const closesAt = meta.closesInHours ? new Date(Date.now() + meta.closesInHours * 3600 * 1000) : null;
   const [post] = await tx
     .insert(posts)
     .values({
@@ -59,9 +74,13 @@ async function createMatchRankie(
       authorId,
       title: `${a.name} vs ${b.name}`,
       subtitle: 'Đối đầu 1v1',
+      caption: meta.caption ?? null,
+      category: meta.category ?? null,
       votingType: 'single',
       chartType: 'head_to_head',
       live: true,
+      closesAt,
+      allowGuestPresent: meta.allowGuestPresent ?? false,
     })
     .returning({ id: posts.id });
   const mk = (c: Contestant, i: number) => ({
@@ -69,6 +88,7 @@ async function createMatchRankie(
     label: c.name,
     emoji: c.emoji ?? undefined,
     color: c.color ?? OPT_COLORS[i % OPT_COLORS.length],
+    imageUrl: c.imageUrl ?? undefined,
     refType: c.refType ?? undefined,
     refId: c.refId ?? undefined,
     position: i,
@@ -82,11 +102,18 @@ export async function createTournament(authorId: string, input: CreateTournament
   if (cs.length < 2) throw badRequest('Cần ít nhất 2 đối thủ');
   if (cs.length > 32) throw badRequest('Tối đa 32 đối thủ');
 
+  const settings: TournamentSettings = {
+    caption: input.caption ?? null,
+    closesInHours: input.closesInHours ?? null,
+    allowGuestPresent: input.allowGuestPresent ?? false,
+  };
+  const meta: MatchMeta = { ...settings, category: input.category ?? null };
+
   const rounds = seedRounds(cs);
   const id = await db.transaction(async (tx) => {
     const [t] = await tx
       .insert(tournaments)
-      .values({ authorId, title: input.title, category: input.category })
+      .values({ authorId, title: input.title, category: input.category, settings })
       .returning({ id: tournaments.id });
 
     for (let r = 0; r < rounds.length; r++) {
@@ -95,7 +122,7 @@ export async function createTournament(authorId: string, input: CreateTournament
         let rankiePostId: string | null = null;
         let winnerRef: Contestant | null = null;
         if (cell.a && cell.b) {
-          rankiePostId = await createMatchRankie(tx, authorId, cell.a, cell.b);
+          rankiePostId = await createMatchRankie(tx, authorId, cell.a, cell.b, meta);
         } else if (cell.a && !cell.b) {
           winnerRef = cell.a; // bye → tự thắng
         } else if (!cell.a && cell.b) {
@@ -214,7 +241,8 @@ export async function advanceRound(id: string, viewerId: string) {
       const b = nm.bRef as Contestant | null;
       let rankiePostId = nm.rankiePostId;
       let winnerRef = nm.winnerRef as Contestant | null;
-      if (a && b && !rankiePostId) rankiePostId = await createMatchRankie(tx, t.authorId, a, b);
+      const meta: MatchMeta = { ...((t.settings as TournamentSettings) ?? {}), category: t.category };
+      if (a && b && !rankiePostId) rankiePostId = await createMatchRankie(tx, t.authorId, a, b, meta);
       else if (a && !b) winnerRef = a;
       else if (!a && b) winnerRef = b;
       await tx

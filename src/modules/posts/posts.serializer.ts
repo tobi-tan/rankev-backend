@@ -30,6 +30,7 @@ export interface RankieView {
   closed: boolean;
   live: boolean;
   sponsored: boolean;
+  allowGuestPresent: boolean;
   votingType: Post['votingType'];
   chartType: Post['chartType'];
   seriesId?: string | null;
@@ -81,6 +82,7 @@ export function toRankieView(
     closed: post.closesAt ? post.closesAt.getTime() <= Date.now() : false,
     live: post.live,
     sponsored: post.sponsored,
+    allowGuestPresent: post.allowGuestPresent,
     votingType: post.votingType,
     chartType: post.chartType,
     author,
