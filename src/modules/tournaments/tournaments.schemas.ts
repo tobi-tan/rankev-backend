@@ -16,5 +16,13 @@ export const createTournamentSchema = z.object({
   // Thời gian bình chọn mỗi vòng (giờ kể từ khi ván mở). null/absent = vô hạn.
   closesInHours: z.number().int().min(1).max(8760).nullable().optional(),
   allowGuestPresent: z.boolean().optional(),
+  // Bảng đấu đi tiếp theo: 'vote' = theo phiếu bình chọn (mặc định);
+  // 'result' = theo KẾT QUẢ THẬT do chủ giải nhập (giải dự đoán kiểu World Cup).
+  advanceMode: z.enum(['vote', 'result']).optional(),
   contestants: z.array(contestantSchema).min(2, 'Cần ít nhất 2 đối thủ').max(32),
+});
+
+// Chủ giải nhập kết quả thật của một trận (giải dự đoán). winner = 'a' | 'b'.
+export const setMatchResultSchema = z.object({
+  winner: z.enum(['a', 'b']),
 });

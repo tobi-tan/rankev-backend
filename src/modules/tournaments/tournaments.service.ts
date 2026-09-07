@@ -5,6 +5,7 @@ import {
   tournamentMatches,
   posts,
   rankieOptions,
+  votes,
   series,
   seriesPosts,
   users,
@@ -28,6 +29,8 @@ export interface TournamentSettings {
   caption?: string | null;
   closesInHours?: number | null;
   allowGuestPresent?: boolean;
+  // 'vote' = đi tiếp theo phiếu; 'result' = theo kết quả thật (giải dự đoán).
+  advanceMode?: 'vote' | 'result';
   // Mỗi giải đấu tự là một series: mọi ván (rankie) được gom vào series này làm "chương".
   seriesId?: string | null;
   seriesName?: string | null;
@@ -119,6 +122,7 @@ export async function createTournament(authorId: string, input: CreateTournament
       caption: input.caption ?? null,
       closesInHours: input.closesInHours ?? null,
       allowGuestPresent: input.allowGuestPresent ?? false,
+      advanceMode: input.advanceMode ?? 'vote',
       seriesId: ser.id,
       seriesName: input.title,
     };
@@ -171,7 +175,7 @@ async function matchVotes(postId: string): Promise<{ a: number; b: number }> {
   return { a, b };
 }
 
-export async function getTournament(id: string) {
+export async function getTournament(id: string, viewerId?: string) {
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) throw notFound('Tournament not found');
   const rows = await db
@@ -184,6 +188,30 @@ export async function getTournament(id: string) {
   const voteMap = new Map<string, { a: number; b: number }>();
   await Promise.all(postIds.map(async (pid) => voteMap.set(pid, await matchVotes(pid))));
 
+  // Dự đoán của người xem trên mỗi ván ('a' | 'b') — để so với kết quả thật.
+  const pickByPost = new Map<string, 'a' | 'b'>();
+  if (viewerId && postIds.length) {
+    const voteRows = await db
+      .select({ rankieId: votes.rankieId, optionIds: votes.optionIds })
+      .from(votes)
+      .where(and(eq(votes.userId, viewerId), inArray(votes.rankieId, postIds)));
+    const pickedOptIds = voteRows.map((v) => (v.optionIds || [])[0]).filter((x): x is string => !!x);
+    if (pickedOptIds.length) {
+      const optRows = await db
+        .select({ id: rankieOptions.id, position: rankieOptions.position })
+        .from(rankieOptions)
+        .where(inArray(rankieOptions.id, pickedOptIds));
+      const posById = new Map(optRows.map((o) => [o.id, o.position]));
+      for (const v of voteRows) {
+        const oid = (v.optionIds || [])[0];
+        const pos = oid ? posById.get(oid) : undefined;
+        if (pos === 0) pickByPost.set(v.rankieId, 'a');
+        else if (pos === 1) pickByPost.set(v.rankieId, 'b');
+      }
+    }
+  }
+
+  const settings = (t.settings as TournamentSettings) ?? {};
   const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
   return {
     id: t.id,
@@ -191,6 +219,7 @@ export async function getTournament(id: string) {
     title: t.title,
     category: t.category,
     status: t.status,
+    advanceMode: settings.advanceMode ?? 'vote',
     currentRound: t.currentRound,
     rounds: maxRound + 1,
     championRef: t.championRef,
@@ -203,8 +232,26 @@ export async function getTournament(id: string) {
       rankiePostId: r.rankiePostId,
       winnerRef: r.winnerRef,
       votes: r.rankiePostId ? voteMap.get(r.rankiePostId) ?? { a: 0, b: 0 } : { a: 0, b: 0 },
+      myPick: r.rankiePostId ? pickByPost.get(r.rankiePostId) ?? null : null,
     })),
   };
+}
+
+// Chủ giải nhập/ sửa KẾT QUẢ THẬT của một trận (giải dự đoán). Không tự đẩy vòng;
+// dùng cho hiển thị đúng/sai + để "Chốt vòng" ở chế độ 'result' lấy làm căn cứ.
+export async function setMatchResult(id: string, viewerId: string, round: number, position: number, winner: 'a' | 'b') {
+  const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
+  if (!t) throw notFound('Tournament not found');
+  if (t.authorId !== viewerId) throw forbidden('Chỉ chủ giải mới nhập được kết quả');
+  const [m] = await db
+    .select()
+    .from(tournamentMatches)
+    .where(and(eq(tournamentMatches.tournamentId, id), eq(tournamentMatches.round, round), eq(tournamentMatches.position, position)));
+  if (!m) throw notFound('Không tìm thấy trận');
+  const winnerRef = (winner === 'a' ? m.aRef : m.bRef) as Contestant | null;
+  if (!winnerRef) throw badRequest('Trận chưa đủ 2 đối thủ');
+  await db.update(tournamentMatches).set({ winnerRef }).where(eq(tournamentMatches.id, m.id));
+  return getTournament(id, viewerId);
 }
 
 // Chốt vòng hiện tại: quyết định thắng theo phiếu, sinh cặp đấu (rankie) vòng sau.
@@ -222,11 +269,20 @@ export async function advanceRound(id: string, viewerId: string) {
     .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.position));
   const maxRound = rows.reduce((m, x) => Math.max(m, x.round), 0);
   const cur = rows.filter((x) => x.round === r).sort((x, y) => x.position - y.position);
+  const settings = (t.settings as TournamentSettings) ?? {};
+  const mode = settings.advanceMode ?? 'vote';
+  // Giải dự đoán: phải nhập KẾT QUẢ THẬT cho mọi trận trước khi chốt vòng.
+  if (mode === 'result') {
+    const missing = cur.some((m) => m.rankiePostId && !m.winnerRef);
+    if (missing) throw badRequest('Hãy nhập kết quả thật cho tất cả các trận trước khi chốt vòng');
+  }
 
   await db.transaction(async (tx) => {
-    // 1) quyết định thắng cho các ván vòng r (byes đã có winnerRef sẵn)
+    // 1) quyết định thắng cho các ván vòng r (byes đã có winnerRef sẵn).
+    // Chế độ 'result': winnerRef do chủ giải nhập (đã kiểm ở trên) → không đụng.
+    // Chế độ 'vote': ván chưa có winnerRef thì quyết theo phiếu.
     for (const m of cur) {
-      if (!m.winnerRef && m.rankiePostId) {
+      if (!m.winnerRef && m.rankiePostId && mode === 'vote') {
         const v = await matchVotes(m.rankiePostId);
         const winner = (v.a >= v.b ? m.aRef : m.bRef) as Contestant | null;
         m.winnerRef = winner;

@@ -58,6 +58,43 @@ describe('tournaments', () => {
     expect(ser.json().posts.length).toBe(2); // 2 ván bán kết là 2 "chương"
   });
 
+  it('prediction mode: advances by REAL result (owner), not by votes; exposes myPick', async () => {
+    const owner = await registerUser(app);
+    const voter = await registerUser(app);
+    const t = (await app.inject({
+      method: 'POST', url: '/tournaments', headers: bearer(owner.accessToken),
+      payload: { title: 'WC dự đoán', advanceMode: 'result', contestants: [{ name: 'A' }, { name: 'B' }] },
+    })).json();
+    expect(t.advanceMode).toBe('result');
+    const match = t.matches.find((m: any) => m.round === 0 && m.rankiePostId);
+    const post = (await app.inject({ method: 'GET', url: `/posts/${match.rankiePostId}`, headers: bearer(voter.accessToken) })).json();
+    const [a, b] = post.options; // position 0 = A, 1 = B
+
+    // Đám đông bình chọn A (dự đoán A thắng).
+    await app.inject({ method: 'POST', url: `/rankies/${match.rankiePostId}/vote`, headers: bearer(voter.accessToken), payload: { optionIds: [a.id] } });
+
+    // getTournament dưới góc nhìn voter → myPick = 'a'.
+    const asViewer = (await app.inject({ method: 'GET', url: `/tournaments/${t.id}`, headers: bearer(voter.accessToken) })).json();
+    expect(asViewer.matches.find((m: any) => m.round === 0 && m.rankiePostId).myPick).toBe('a');
+
+    // Chốt vòng KHI CHƯA nhập kết quả thật → 400.
+    const early = await app.inject({ method: 'POST', url: `/tournaments/${t.id}/advance`, headers: bearer(owner.accessToken) });
+    expect(early.statusCode).toBe(400);
+
+    // Chủ giải nhập kết quả THẬT = B thắng (ngược với phiếu).
+    await app.inject({ method: 'POST', url: `/tournaments/${t.id}/matches/0/0/result`, headers: bearer(owner.accessToken), payload: { winner: 'b' } });
+    const done = (await app.inject({ method: 'POST', url: `/tournaments/${t.id}/advance`, headers: bearer(owner.accessToken) })).json();
+    // Vô địch phải là B (kết quả thật), dù A nhiều phiếu hơn.
+    expect(done.status).toBe('done');
+    expect(done.championRef.name).toBe('B');
+
+    // Người xem đoán A → sai (vì thật là B). Bracket vẫn giữ myPick để FE so sánh.
+    const finalView = (await app.inject({ method: 'GET', url: `/tournaments/${t.id}`, headers: bearer(voter.accessToken) })).json();
+    const m0 = finalView.matches.find((m: any) => m.round === 0 && m.rankiePostId);
+    expect(m0.myPick).toBe('a');
+    expect(m0.winnerRef.name).toBe('B'); // FE: myPick 'a' → aRef=A ≠ winner B → đoán sai
+  });
+
   it('reuses settings for rounds created on advance', async () => {
     const owner = await registerUser(app);
     const res = await app.inject({
