@@ -51,6 +51,7 @@ export const posts = pgTable(
     media: jsonb('media').$type<{ type?: string; color?: string; emoji?: string; url?: string }>(),
     voteMarker: jsonb('vote_marker').$type<{ emoji?: string; image?: string }>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    opensAt: timestamp('opens_at', { withTimezone: true }), // hẹn giờ lên sóng | null = mở ngay
     closesAt: timestamp('closes_at', { withTimezone: true }),
     live: boolean('live').notNull().default(false),
     sponsored: boolean('sponsored').notNull().default(false),

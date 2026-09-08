@@ -54,12 +54,16 @@ export async function castVote(
       id: posts.id,
       type: posts.type,
       votingType: posts.votingType,
+      opensAt: posts.opensAt,
       closesAt: posts.closesAt,
     })
     .from(posts)
     .where(eq(posts.id, rankieId));
 
   if (!post || post.type !== 'rankie') throw notFound('Rankie not found');
+  if (post.opensAt && post.opensAt.getTime() > Date.now()) {
+    throw forbidden('Rankie chưa tới giờ lên sóng');
+  }
   if (post.closesAt && post.closesAt.getTime() <= Date.now()) {
     throw forbidden('Voting for this Rankie has closed');
   }

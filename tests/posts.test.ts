@@ -55,6 +55,23 @@ describe('posts + rankie', () => {
     expect(results.json().totalVotes).toBe(1);
   });
 
+  it('hẹn giờ lên sóng: chặn bình chọn trước opensAt, mở khi bỏ giờ', async () => {
+    const { accessToken } = await registerUser(app);
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const rk = await createRankie(app, accessToken, { title: 'Chờ lên sóng', opensAt: future });
+    expect(rk.opensAt).toBeTruthy();
+    expect(rk.notYetOpen).toBe(true);
+
+    // Bình chọn trước giờ mở → 403.
+    const early = await app.inject({ method: 'POST', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken), payload: { optionIds: [rk.options[0].id] } });
+    expect(early.statusCode).toBe(403);
+
+    // Chủ bài bỏ giờ lên sóng (PATCH opensAt=null) → mở ngay, vote được.
+    await app.inject({ method: 'PATCH', url: `/posts/${rk.id}`, headers: bearer(accessToken), payload: { opensAt: null } });
+    const ok = await app.inject({ method: 'POST', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken), payload: { optionIds: [rk.options[0].id] } });
+    expect(ok.statusCode).toBe(200);
+  });
+
   it('re-vote moves the tally (single choice)', async () => {
     const { accessToken } = await registerUser(app);
     const rk = await createRankie(app, accessToken);

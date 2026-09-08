@@ -26,6 +26,8 @@ export interface RankieView {
   media: Post['media'];
   voteMarker: Post['voteMarker'];
   createdAt: string;
+  opensAt: string | null;
+  notYetOpen: boolean; // đã hẹn giờ lên sóng nhưng chưa tới giờ
   closesAt: string | null;
   closed: boolean;
   live: boolean;
@@ -80,6 +82,8 @@ export function toRankieView(
     media: post.media,
     voteMarker: post.voteMarker,
     createdAt: post.createdAt.toISOString(),
+    opensAt: post.opensAt ? post.opensAt.toISOString() : null,
+    notYetOpen: post.opensAt ? post.opensAt.getTime() > Date.now() : false,
     closesAt: post.closesAt ? post.closesAt.toISOString() : null,
     closed: post.closesAt ? post.closesAt.getTime() <= Date.now() : false,
     live: post.live,
