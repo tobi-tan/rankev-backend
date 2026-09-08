@@ -88,12 +88,23 @@ describe('posts + rankie', () => {
     // Trending trả về tag đã đếm.
     const trend = await app.inject({ method: 'GET', url: '/tags/trending' });
     expect(trend.statusCode).toBe(200);
-    expect(trend.json().items.some((t: any) => t.tag === 'amnhac' && t.count >= 1)).toBe(true);
+    expect(trend.json().items.some((t: any) => String(t.tag).toLowerCase() === 'amnhac' && t.count >= 1)).toBe(true);
 
     // PATCH thay tags.
     await app.inject({ method: 'PATCH', url: `/posts/${rk.id}`, headers: bearer(accessToken), payload: { tags: ['#game'] } });
     const after = await app.inject({ method: 'GET', url: `/posts/${rk.id}`, headers: bearer(accessToken) });
     expect(after.json().tags).toEqual(['game']);
+  });
+
+  it('hashtag khớp không phân biệt dấu tiếng Việt (#ÂmNhạc = #amnhac)', async () => {
+    const { accessToken } = await registerUser(app);
+    const rk = await createRankie(app, accessToken, { title: 'Có dấu', tags: ['ÂmNhạc'] });
+    // Lọc không dấu vẫn thấy.
+    const noAccent = await app.inject({ method: 'GET', url: '/feed?tag=amnhac' });
+    expect(noAccent.json().items.some((i: any) => i.id === rk.id)).toBe(true);
+    // Lọc có dấu cũng thấy.
+    const withAccent = await app.inject({ method: 'GET', url: `/feed?tag=${encodeURIComponent('âmnhạc')}` });
+    expect(withAccent.json().items.some((i: any) => i.id === rk.id)).toBe(true);
   });
 
   it('re-vote moves the tally (single choice)', async () => {

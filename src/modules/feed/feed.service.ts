@@ -196,7 +196,8 @@ export async function listFeed(
   // Lọc theo hashtag: tag khớp không phân biệt hoa thường với một phần tử trong mảng tags.
   if (query.tag) {
     const t = query.tag.trim().replace(/^#+/, '').toLowerCase();
-    if (t) conditions.push(sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE lower(tg) = ${t})`);
+    // Khớp không phân biệt dấu tiếng Việt (#âmnhạc = #amnhac).
+    if (t) conditions.push(sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE unaccent(lower(tg)) = unaccent(${t}))`);
   }
   // Ẩn các bài-ván của giải đấu khỏi feed chính — giải đấu hiện dưới dạng MỘT thẻ giải
   // riêng (các ván xem trong bảng phân nhánh), tránh feed bị ngập bởi từng ván lẻ.
@@ -237,12 +238,13 @@ export async function listFeed(
 // Hashtag đang thịnh hành: đếm số bài theo tag (ưu tiên bài gần đây), trả top N.
 // Bỏ qua các bài-ván của giải đấu để không nhiễu.
 export async function listTrendingTags(limit = 20): Promise<{ tag: string; count: number }[]> {
+  // Gộp không phân biệt dấu; hiển thị cách viết phổ biến nhất trong nhóm.
   const rows = await db.execute(sql`
-    SELECT lower(tg) AS tag, count(*)::int AS count
+    SELECT mode() WITHIN GROUP (ORDER BY tg) AS tag, count(*)::int AS count
     FROM posts p, jsonb_array_elements_text(COALESCE(p.tags, '[]'::jsonb)) AS tg
     WHERE NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = p.id)
       AND p.created_at > now() - interval '90 days'
-    GROUP BY lower(tg)
+    GROUP BY unaccent(lower(tg))
     ORDER BY count DESC, tag ASC
     LIMIT ${limit}
   `);
