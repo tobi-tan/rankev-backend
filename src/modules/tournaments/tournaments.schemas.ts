@@ -34,3 +34,15 @@ export const setMatchScheduleSchema = z.object({
   opensAt: z.coerce.date().nullable().optional(),
   closesAt: z.coerce.date().nullable().optional(),
 });
+
+// Chủ giải tuỳ chỉnh giao diện một trận: tên/ảnh/emoji/màu của mỗi đấu thủ.
+const matchContestantPatchSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  emoji: z.string().max(16).nullable().optional(),
+  color: z.string().max(32).nullable().optional(),
+});
+export const customizeMatchSchema = z.object({
+  a: matchContestantPatchSchema.optional(),
+  b: matchContestantPatchSchema.optional(),
+});

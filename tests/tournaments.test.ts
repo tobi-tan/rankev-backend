@@ -150,6 +150,34 @@ describe('tournaments', () => {
     expect(off.json().bookmarked).toBe(false);
   });
 
+  it('lets the owner customize a match (tên/ảnh đấu thủ) — đồng bộ vào bảng nhánh + rankie ván', async () => {
+    const owner = await registerUser(app);
+    const t = (await app.inject({ method: 'POST', url: '/tournaments', headers: bearer(owner.accessToken), payload: { title: 'Chỉnh', contestants: [{ name: 'A' }, { name: 'B' }] } })).json();
+    const m = t.matches.find((x: any) => x.round === 0 && x.rankiePostId);
+
+    const res = await app.inject({
+      method: 'POST', url: `/tournaments/${t.id}/matches/0/0/customize`, headers: bearer(owner.accessToken),
+      payload: { a: { name: 'Alpha', imageUrl: 'https://example.com/a.png' }, b: { imageUrl: 'https://example.com/b.png' } },
+    });
+    expect(res.statusCode).toBe(200);
+    const updated = res.json().matches.find((x: any) => x.round === 0 && x.position === 0);
+    expect(updated.aRef.name).toBe('Alpha');
+    expect(updated.aRef.imageUrl).toBe('https://example.com/a.png');
+    expect(updated.bRef.imageUrl).toBe('https://example.com/b.png');
+
+    // Rankie ván cũng đổi theo: nhãn + ảnh lựa chọn + tiêu đề.
+    const post = (await app.inject({ method: 'GET', url: `/posts/${m.rankiePostId}`, headers: bearer(owner.accessToken) })).json();
+    expect(post.title).toBe('Alpha vs B');
+    const oa = post.options.find((o: any) => o.position === 0);
+    expect(oa.label).toBe('Alpha');
+    expect(oa.imageUrl).toBe('https://example.com/a.png');
+
+    // Người khác không phải chủ giải → 403.
+    const other = await registerUser(app);
+    const forbidden = await app.inject({ method: 'POST', url: `/tournaments/${t.id}/matches/0/0/customize`, headers: bearer(other.accessToken), payload: { a: { name: 'Hack' } } });
+    expect(forbidden.statusCode).toBe(403);
+  });
+
   it('reuses settings for rounds created on advance', async () => {
     const owner = await registerUser(app);
     const res = await app.inject({

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
-import { createTournamentSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
+import { createTournamentSchema, customizeMatchSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
 import * as tournaments from './tournaments.service';
 import { createCommentSchema, listCommentsQuerySchema } from '../comments/comments.schemas';
 import * as commentsSvc from '../comments/comments.service';
@@ -45,6 +45,16 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
     async (req) => {
       const body = parse(setMatchScheduleSchema, req.body);
       return tournaments.setMatchSchedule(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body);
+    },
+  );
+
+  // POST /tournaments/:id/matches/:round/:position/customize — chủ giải tuỳ chỉnh đấu thủ (tên/ảnh/emoji/màu)
+  app.post<{ Params: { id: string; round: string; position: string } }>(
+    '/:id/matches/:round/:position/customize',
+    { preHandler: authenticate },
+    async (req) => {
+      const body = parse(customizeMatchSchema, req.body);
+      return tournaments.customizeMatch(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body);
     },
   );
 

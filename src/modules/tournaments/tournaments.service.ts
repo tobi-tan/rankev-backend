@@ -287,6 +287,61 @@ export async function setMatchSchedule(
   return getTournament(id, viewerId);
 }
 
+// Chủ giải tuỳ chỉnh GIAO DIỆN một trận: tên/ảnh/emoji/màu của mỗi đấu thủ. Cập nhật
+// cả aRef/bRef (bảng nhánh) lẫn 2 lựa chọn của rankie ván + tiêu đề bài. Chỉ đổi field gửi lên.
+export interface MatchContestantPatch {
+  name?: string;
+  imageUrl?: string | null;
+  emoji?: string | null;
+  color?: string | null;
+}
+export async function customizeMatch(
+  id: string,
+  viewerId: string,
+  round: number,
+  position: number,
+  patch: { a?: MatchContestantPatch; b?: MatchContestantPatch },
+) {
+  const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
+  if (!t) throw notFound('Tournament not found');
+  if (t.authorId !== viewerId) throw forbidden('Chỉ chủ giải mới tuỳ chỉnh được');
+  const [m] = await db
+    .select()
+    .from(tournamentMatches)
+    .where(and(eq(tournamentMatches.tournamentId, id), eq(tournamentMatches.round, round), eq(tournamentMatches.position, position)));
+  if (!m) throw notFound('Không tìm thấy trận');
+
+  const merge = (ref: Contestant | null, p?: MatchContestantPatch): Contestant | null => {
+    if (!ref) return ref;
+    if (!p) return ref;
+    return {
+      ...ref,
+      name: p.name !== undefined && p.name.trim() ? p.name.trim() : ref.name,
+      imageUrl: p.imageUrl !== undefined ? p.imageUrl : ref.imageUrl,
+      emoji: p.emoji !== undefined ? p.emoji : ref.emoji,
+      color: p.color !== undefined ? p.color : ref.color,
+    };
+  };
+  const newA = merge(m.aRef as Contestant | null, patch.a);
+  const newB = merge(m.bRef as Contestant | null, patch.b);
+  await db.update(tournamentMatches).set({ aRef: newA, bRef: newB }).where(eq(tournamentMatches.id, m.id));
+
+  // Đồng bộ vào 2 lựa chọn của rankie ván (nếu đã có bài) + tiêu đề.
+  if (m.rankiePostId) {
+    const applyOpt = async (pos: number, ref: Contestant | null) => {
+      if (!ref) return;
+      await db
+        .update(rankieOptions)
+        .set({ label: ref.name, imageUrl: ref.imageUrl ?? null, emoji: ref.emoji ?? null, color: ref.color ?? undefined })
+        .where(and(eq(rankieOptions.rankieId, m.rankiePostId!), eq(rankieOptions.position, pos)));
+    };
+    if (patch.a) await applyOpt(0, newA);
+    if (patch.b) await applyOpt(1, newB);
+    if (newA && newB) await db.update(posts).set({ title: `${newA.name} vs ${newB.name}` }).where(eq(posts.id, m.rankiePostId));
+  }
+  return getTournament(id, viewerId);
+}
+
 // Chủ giải nhập/ sửa KẾT QUẢ THẬT của một trận (giải dự đoán). Không tự đẩy vòng;
 // dùng cho hiển thị đúng/sai + để "Chốt vòng" ở chế độ 'result' lấy làm căn cứ.
 export async function setMatchResult(id: string, viewerId: string, round: number, position: number, winner: 'a' | 'b') {
