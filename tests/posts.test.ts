@@ -72,6 +72,30 @@ describe('posts + rankie', () => {
     expect(ok.statusCode).toBe(200);
   });
 
+  it('hashtag: lưu & chuẩn hoá tags, lọc feed theo tag, và trending', async () => {
+    const { accessToken } = await registerUser(app);
+    // Tạo bài với hashtag lộn xộn (#, hoa thường, trùng, khoảng trắng).
+    const rk = await createRankie(app, accessToken, { title: 'Bài có tag', tags: ['#AmNhac', 'amnhac', ' the thao ', ''] });
+    expect(rk.tags).toEqual(['AmNhac', 'thethao']); // bỏ #, gộp space, khử trùng (không phân biệt hoa thường)
+
+    // Lọc feed theo tag (không phân biệt hoa thường).
+    const feed = await app.inject({ method: 'GET', url: '/feed?tag=amnhac' });
+    expect(feed.statusCode).toBe(200);
+    expect(feed.json().items.some((i: any) => i.id === rk.id)).toBe(true);
+    const other = await app.inject({ method: 'GET', url: '/feed?tag=khongtontai' });
+    expect(other.json().items.some((i: any) => i.id === rk.id)).toBe(false);
+
+    // Trending trả về tag đã đếm.
+    const trend = await app.inject({ method: 'GET', url: '/tags/trending' });
+    expect(trend.statusCode).toBe(200);
+    expect(trend.json().items.some((t: any) => t.tag === 'amnhac' && t.count >= 1)).toBe(true);
+
+    // PATCH thay tags.
+    await app.inject({ method: 'PATCH', url: `/posts/${rk.id}`, headers: bearer(accessToken), payload: { tags: ['#game'] } });
+    const after = await app.inject({ method: 'GET', url: `/posts/${rk.id}`, headers: bearer(accessToken) });
+    expect(after.json().tags).toEqual(['game']);
+  });
+
   it('re-vote moves the tally (single choice)', async () => {
     const { accessToken } = await registerUser(app);
     const rk = await createRankie(app, accessToken);

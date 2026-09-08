@@ -14,6 +14,7 @@ import {
   type TournamentMatch,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
+import { normalizeTags } from '../../lib/tags';
 import { toPublicUser } from '../users/users.serializer';
 
 // Một đối thủ trong giải: text thuần hoặc tham chiếu thực thể Rankev ("Lưu vào Rankie").
@@ -29,6 +30,7 @@ export interface Contestant {
 // Cấu hình dùng lại cho mọi ván (vòng 0 và các vòng sinh khi chốt vòng).
 export interface TournamentSettings {
   caption?: string | null;
+  tags?: string[];
   media?: { type?: string; color?: string; emoji?: string; url?: string } | null;
   closesInHours?: number | null;
   allowGuestPresent?: boolean;
@@ -42,6 +44,7 @@ export interface TournamentSettings {
 export interface CreateTournamentInput extends TournamentSettings {
   title: string;
   category?: string;
+  tags?: string[];
   contestants: Contestant[];
 }
 
@@ -89,6 +92,7 @@ async function createMatchRankie(
       subtitle: 'Đối đầu 1v1',
       caption: meta.caption ?? null,
       category: meta.category ?? null,
+      tags: normalizeTags(meta.tags ?? (meta.category ? [meta.category] : [])),
       votingType: 'single',
       chartType: 'head_to_head',
       live: true,
@@ -123,6 +127,7 @@ export async function createTournament(authorId: string, input: CreateTournament
 
     const settings: TournamentSettings = {
       caption: input.caption ?? null,
+      tags: normalizeTags(input.tags ?? (input.category ? [input.category] : [])),
       media: input.media ?? null,
       closesInHours: input.closesInHours ?? null,
       allowGuestPresent: input.allowGuestPresent ?? false,
@@ -239,6 +244,7 @@ export async function getTournament(id: string, viewerId?: string) {
     authorId: t.authorId,
     title: t.title,
     category: t.category,
+    tags: Array.isArray(settings.tags) ? settings.tags : [],
     caption: settings.caption ?? null,
     media: settings.media ?? null,
     commentCount: Number(cc) || 0,
@@ -505,6 +511,7 @@ export async function listTournamentFeed(limit = 30, viewerId?: string) {
       type: 'tournament' as const,
       title: r.t.title,
       category: r.t.category,
+      tags: Array.isArray(settings.tags) ? settings.tags : [],
       media: settings.media ?? null,
       status: r.t.status,
       currentRound: r.t.currentRound,

@@ -7,6 +7,7 @@ import { getBlockedIds } from '../moderation/moderation.service';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 import { toRankieView, type RankieView } from './posts.serializer';
 import { getPostSeries } from '../series/series.service';
+import { normalizeTags } from '../../lib/tags';
 import type { CreateRankieInput, ListPostsQuery } from './posts.schemas';
 
 async function fetchAuthor(authorId: string): Promise<PublicUser | null> {
@@ -40,6 +41,7 @@ export async function createRankie(
         subtitle: input.subtitle,
         caption: input.caption,
         category: input.category,
+        tags: normalizeTags(input.tags ?? (input.category ? [input.category] : [])),
         media: input.media,
         opensAt: input.opensAt ?? null,
         closesAt: input.closesAt,
@@ -224,6 +226,7 @@ export async function updatePost(
     'category',
     'media',
     'voteMarker',
+    'tags',
     'opensAt',
     'closesAt',
     'live',
@@ -234,6 +237,7 @@ export async function updatePost(
   ] as const) {
     if (input[k] !== undefined) patch[k] = input[k];
   }
+  if (input.tags !== undefined) patch.tags = normalizeTags(input.tags ?? []);
 
   await db.transaction(async (tx) => {
     if (Object.keys(patch).length > 0) {

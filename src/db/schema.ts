@@ -48,6 +48,7 @@ export const posts = pgTable(
     subtitle: text('subtitle'),
     caption: text('caption'),
     category: text('category'),
+    tags: jsonb('tags').$type<string[]>(), // hashtag tự do (thay danh mục cố định)
     media: jsonb('media').$type<{ type?: string; color?: string; emoji?: string; url?: string }>(),
     voteMarker: jsonb('vote_marker').$type<{ emoji?: string; image?: string }>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -38,7 +38,8 @@ export const createRankieSchema = z.object({
   title: z.string().min(1).max(200),
   subtitle: z.string().max(200).optional(),
   caption: z.string().max(2000).optional(),
-  category: z.string().max(80).optional(),
+  category: z.string().max(80).optional(), // giữ tương thích ngược; ưu tiên tags
+  tags: z.array(z.string().max(60)).max(20).optional(), // hashtag tự do
   media: mediaSchema,
   opensAt: z.coerce.date().nullable().optional(), // hẹn giờ lên sóng | null/absent = mở ngay
   closesAt: z.coerce.date().optional(),
@@ -58,6 +59,7 @@ export const updatePostSchema = z.object({
   subtitle: z.string().max(200).nullable().optional(),
   caption: z.string().max(2000).nullable().optional(),
   category: z.string().max(80).nullable().optional(),
+  tags: z.array(z.string().max(60)).max(20).nullable().optional(),
   media: mediaSchema.nullable(), // null = xoá ảnh bìa
   voteMarker: voteMarkerSchema,
   opensAt: z.coerce.date().nullable().optional(),

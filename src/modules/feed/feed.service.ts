@@ -34,6 +34,7 @@ export interface FeedSummary {
   /** mô tả (caption) của bài — để feed card hiện đủ tiêu đề + mô tả + ảnh như các loại khác */
   caption: string | null;
   category: string | null;
+  tags: string[];
   media: unknown;
   voteMarker: unknown;
   createdAt: string;
@@ -57,6 +58,7 @@ export interface FeedSummary {
 
 export interface FeedQuery {
   type?: 'rankie' | 'path' | 'deck';
+  tag?: string | null; // lọc theo hashtag (không phân biệt hoa thường)
   cursor?: string | null;
   limit: number;
 }
@@ -165,6 +167,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       subtitle: p.subtitle,
       caption: p.caption,
       category: p.category,
+      tags: Array.isArray(p.tags) ? p.tags : [],
       media: p.media,
       voteMarker: p.voteMarker,
       createdAt: p.createdAt.toISOString(),
@@ -190,6 +193,11 @@ export async function listFeed(
 ): Promise<{ items: FeedSummary[]; nextCursor: string | null }> {
   const conditions = [] as any[];
   if (query.type) conditions.push(eq(posts.type, query.type));
+  // Lọc theo hashtag: tag khớp không phân biệt hoa thường với một phần tử trong mảng tags.
+  if (query.tag) {
+    const t = query.tag.trim().replace(/^#+/, '').toLowerCase();
+    if (t) conditions.push(sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE lower(tg) = ${t})`);
+  }
   // Ẩn các bài-ván của giải đấu khỏi feed chính — giải đấu hiện dưới dạng MỘT thẻ giải
   // riêng (các ván xem trong bảng phân nhánh), tránh feed bị ngập bởi từng ván lẻ.
   conditions.push(sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`);
@@ -224,6 +232,22 @@ export async function listFeed(
       : null;
 
   return { items, nextCursor };
+}
+
+// Hashtag đang thịnh hành: đếm số bài theo tag (ưu tiên bài gần đây), trả top N.
+// Bỏ qua các bài-ván của giải đấu để không nhiễu.
+export async function listTrendingTags(limit = 20): Promise<{ tag: string; count: number }[]> {
+  const rows = await db.execute(sql`
+    SELECT lower(tg) AS tag, count(*)::int AS count
+    FROM posts p, jsonb_array_elements_text(COALESCE(p.tags, '[]'::jsonb)) AS tg
+    WHERE NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = p.id)
+      AND p.created_at > now() - interval '90 days'
+    GROUP BY lower(tg)
+    ORDER BY count DESC, tag ASC
+    LIMIT ${limit}
+  `);
+  const list = (rows as unknown as { rows?: { tag: string; count: number }[] }).rows ?? (rows as unknown as { tag: string; count: number }[]);
+  return (Array.isArray(list) ? list : []).map((r) => ({ tag: String(r.tag), count: Number(r.count) }));
 }
 
 export async function summariesByIds(ids: string[], _viewerId?: string): Promise<FeedSummary[]> {

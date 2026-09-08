@@ -23,6 +23,7 @@ export interface RankieView {
   subtitle: string | null;
   caption: string | null;
   category: string | null;
+  tags: string[];
   media: Post['media'];
   voteMarker: Post['voteMarker'];
   createdAt: string;
@@ -79,6 +80,7 @@ export function toRankieView(
     subtitle: post.subtitle,
     caption: post.caption,
     category: post.category,
+    tags: Array.isArray(post.tags) ? post.tags : [],
     media: post.media,
     voteMarker: post.voteMarker,
     createdAt: post.createdAt.toISOString(),
