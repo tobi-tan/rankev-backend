@@ -14,8 +14,8 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
   });
 
   // GET /tournaments — danh sách giải đấu cho feed (công khai, mỗi giải = 1 thẻ)
-  app.get('/', async () => {
-    return { items: await tournaments.listTournamentFeed() };
+  app.get('/', { preHandler: optionalAuth }, async (req) => {
+    return { items: await tournaments.listTournamentFeed(30, req.user?.id) };
   });
 
   // GET /tournaments/mine — giải của tôi
@@ -51,6 +51,11 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
   // POST /tournaments/:id/advance — chốt vòng hiện tại (chủ giải)
   app.post<{ Params: { id: string } }>('/:id/advance', { preHandler: authenticate }, async (req) => {
     return tournaments.advanceRound(req.params.id, requireUserId(req));
+  });
+
+  // POST /tournaments/:id/bookmark — bật/tắt đánh dấu (lưu) giải đấu
+  app.post<{ Params: { id: string } }>('/:id/bookmark', { preHandler: authenticate }, async (req) => {
+    return tournaments.toggleTournamentBookmark(requireUserId(req), req.params.id);
   });
 
   // GET /tournaments/:id/comments — bình luận trên thẻ đấu

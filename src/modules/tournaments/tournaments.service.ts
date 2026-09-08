@@ -10,6 +10,7 @@ import {
   seriesPosts,
   users,
   comments,
+  tournamentBookmarks,
   type TournamentMatch,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
@@ -223,6 +224,15 @@ export async function getTournament(id: string, viewerId?: string) {
 
   const settings = (t.settings as TournamentSettings) ?? {};
   const [{ cc } = { cc: 0 }] = await db.select({ cc: count() }).from(comments).where(and(eq(comments.tournamentId, id), isNull(comments.deletedAt)));
+  let bookmarked = false;
+  if (viewerId) {
+    const [bm] = await db
+      .select({ userId: tournamentBookmarks.userId })
+      .from(tournamentBookmarks)
+      .where(and(eq(tournamentBookmarks.userId, viewerId), eq(tournamentBookmarks.tournamentId, id)))
+      .limit(1);
+    bookmarked = !!bm;
+  }
   const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
   return {
     id: t.id,
@@ -232,6 +242,7 @@ export async function getTournament(id: string, viewerId?: string) {
     caption: settings.caption ?? null,
     media: settings.media ?? null,
     commentCount: Number(cc) || 0,
+    bookmarked,
     status: t.status,
     advanceMode: settings.advanceMode ?? 'vote',
     currentRound: t.currentRound,
@@ -386,7 +397,7 @@ export async function listMyTournaments(authorId: string) {
 
 // Danh sách giải đấu cho FEED (mỗi giải = 1 thẻ). Kèm tác giả + tóm tắt số vòng/số ván
 // + tổng phiếu, để web render thẻ giải mà không cần nạp cả bảng phân nhánh.
-export async function listTournamentFeed(limit = 30) {
+export async function listTournamentFeed(limit = 30, viewerId?: string) {
   const tRows = await db
     .select({ t: tournaments, author: users })
     .from(tournaments)
@@ -394,6 +405,14 @@ export async function listTournamentFeed(limit = 30) {
     .orderBy(desc(tournaments.createdAt))
     .limit(limit);
   const ids = tRows.map((r) => r.t.id);
+  const bookmarkedSet = new Set<string>();
+  if (viewerId && ids.length) {
+    const bmRows = await db
+      .select({ tid: tournamentBookmarks.tournamentId })
+      .from(tournamentBookmarks)
+      .where(and(eq(tournamentBookmarks.userId, viewerId), inArray(tournamentBookmarks.tournamentId, ids)));
+    for (const b of bmRows) bookmarkedSet.add(b.tid);
+  }
   const matchRows = ids.length
     ? await db
         .select({ tid: tournamentMatches.tournamentId, round: tournamentMatches.round, postId: tournamentMatches.rankiePostId })
@@ -439,8 +458,28 @@ export async function listTournamentFeed(limit = 30) {
       matchCount: a.matchCount,
       totalVotes: a.votes,
       commentCount: ccBy.get(r.t.id) ?? 0,
+      bookmarked: bookmarkedSet.has(r.t.id),
       createdAt: r.t.createdAt.toISOString(),
       author: r.author ? toPublicUser(r.author) : null,
     };
   });
+}
+
+// Bật/tắt đánh dấu (lưu) một giải đấu cho người dùng. Trả trạng thái mới.
+export async function toggleTournamentBookmark(userId: string, tournamentId: string): Promise<{ bookmarked: boolean }> {
+  const [t] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId));
+  if (!t) throw notFound('Tournament not found');
+  const [existing] = await db
+    .select({ userId: tournamentBookmarks.userId })
+    .from(tournamentBookmarks)
+    .where(and(eq(tournamentBookmarks.userId, userId), eq(tournamentBookmarks.tournamentId, tournamentId)))
+    .limit(1);
+  if (existing) {
+    await db
+      .delete(tournamentBookmarks)
+      .where(and(eq(tournamentBookmarks.userId, userId), eq(tournamentBookmarks.tournamentId, tournamentId)));
+    return { bookmarked: false };
+  }
+  await db.insert(tournamentBookmarks).values({ userId, tournamentId }).onConflictDoNothing();
+  return { bookmarked: true };
 }

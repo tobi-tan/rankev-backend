@@ -125,6 +125,31 @@ describe('tournaments', () => {
     expect(ok.statusCode).toBe(200);
   });
 
+  it('bookmarks a tournament (toggle) and exposes bookmarked to the viewer', async () => {
+    const owner = await registerUser(app);
+    const fan = await registerUser(app);
+    const t = (await app.inject({ method: 'POST', url: '/tournaments', headers: bearer(owner.accessToken), payload: { title: 'Lưu giải', contestants: [{ name: 'A' }, { name: 'B' }] } })).json();
+
+    // Chưa lưu → bookmarked = false.
+    const before = (await app.inject({ method: 'GET', url: `/tournaments/${t.id}`, headers: bearer(fan.accessToken) })).json();
+    expect(before.bookmarked).toBe(false);
+
+    // Bật lưu.
+    const on = await app.inject({ method: 'POST', url: `/tournaments/${t.id}/bookmark`, headers: bearer(fan.accessToken) });
+    expect(on.statusCode).toBe(200);
+    expect(on.json().bookmarked).toBe(true);
+    const after = (await app.inject({ method: 'GET', url: `/tournaments/${t.id}`, headers: bearer(fan.accessToken) })).json();
+    expect(after.bookmarked).toBe(true);
+
+    // Feed cũng phản ánh trạng thái lưu của người xem.
+    const feed = (await app.inject({ method: 'GET', url: '/tournaments', headers: bearer(fan.accessToken) })).json();
+    expect(feed.items.find((x: any) => x.id === t.id).bookmarked).toBe(true);
+
+    // Tắt lưu.
+    const off = await app.inject({ method: 'POST', url: `/tournaments/${t.id}/bookmark`, headers: bearer(fan.accessToken) });
+    expect(off.json().bookmarked).toBe(false);
+  });
+
   it('reuses settings for rounds created on advance', async () => {
     const owner = await registerUser(app);
     const res = await app.inject({

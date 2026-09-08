@@ -495,6 +495,21 @@ export const tournamentMatches = pgTable(
   },
   (t) => ({ tourIdx: index('tournament_matches_tour_idx').on(t.tournamentId, t.round, t.position) }),
 );
+// Đánh dấu (lưu) giải đấu — bookmarks thường khoá theo post_id nên giải cần bảng riêng.
+export const tournamentBookmarks = pgTable(
+  'tournament_bookmarks',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tournamentId: uuid('tournament_id')
+      .notNull()
+      .references(() => tournaments.id, { onDelete: 'cascade' }),
+    bookmarkedAt: timestamp('bookmarked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.userId, t.tournamentId] }) }),
+);
+
 export type Tournament = typeof tournaments.$inferSelect;
 export type TournamentMatch = typeof tournamentMatches.$inferSelect;
 
