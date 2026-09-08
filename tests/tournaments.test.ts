@@ -107,6 +107,24 @@ describe('tournaments', () => {
     expect(list.json().items[0].text).toBe('Đội A vô địch!');
   });
 
+  it('blocks voting on a match before its scheduled open time', async () => {
+    const owner = await registerUser(app);
+    const fan = await registerUser(app);
+    const t = (await app.inject({ method: 'POST', url: '/tournaments', headers: bearer(owner.accessToken), payload: { title: 'Lịch', contestants: [{ name: 'A' }, { name: 'B' }] } })).json();
+    const m = t.matches.find((x: any) => x.round === 0 && x.rankiePostId);
+    const post = (await app.inject({ method: 'GET', url: `/posts/${m.rankiePostId}`, headers: bearer(fan.accessToken) })).json();
+    // Owner hẹn giờ MỞ ở tương lai.
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    await app.inject({ method: 'POST', url: `/tournaments/${t.id}/matches/0/0/schedule`, headers: bearer(owner.accessToken), payload: { opensAt: future } });
+    // Vote trước giờ mở → 403.
+    const early = await app.inject({ method: 'POST', url: `/rankies/${m.rankiePostId}/vote`, headers: bearer(fan.accessToken), payload: { optionIds: [post.options[0].id] } });
+    expect(early.statusCode).toBe(403);
+    // Bỏ giờ mở → vote được.
+    await app.inject({ method: 'POST', url: `/tournaments/${t.id}/matches/0/0/schedule`, headers: bearer(owner.accessToken), payload: { opensAt: null } });
+    const ok = await app.inject({ method: 'POST', url: `/rankies/${m.rankiePostId}/vote`, headers: bearer(fan.accessToken), payload: { optionIds: [post.options[0].id] } });
+    expect(ok.statusCode).toBe(200);
+  });
+
   it('reuses settings for rounds created on advance', async () => {
     const owner = await registerUser(app);
     const res = await app.inject({

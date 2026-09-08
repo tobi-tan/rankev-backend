@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { posts, rankieOptions, votes } from '../../db/schema';
+import { posts, rankieOptions, votes, tournamentMatches } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { toOptionView, type RankieOptionView } from '../posts/posts.serializer';
 import type { VoteInput } from './rankies.schemas';
@@ -62,6 +62,15 @@ export async function castVote(
   if (!post || post.type !== 'rankie') throw notFound('Rankie not found');
   if (post.closesAt && post.closesAt.getTime() <= Date.now()) {
     throw forbidden('Voting for this Rankie has closed');
+  }
+  // Trận của giải đấu đã hẹn giờ MỞ nhưng chưa tới giờ → chưa cho bình chọn.
+  const [tm] = await db
+    .select({ opensAt: tournamentMatches.opensAt })
+    .from(tournamentMatches)
+    .where(eq(tournamentMatches.rankiePostId, rankieId))
+    .limit(1);
+  if (tm?.opensAt && tm.opensAt.getTime() > Date.now()) {
+    throw forbidden('Trận đấu chưa mở bình chọn');
   }
 
   // Validate all supplied option ids belong to this rankie.
