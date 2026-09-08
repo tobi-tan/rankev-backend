@@ -13,6 +13,7 @@ export const createTournamentSchema = z.object({
   title: z.string().min(1).max(200),
   category: z.string().max(80).optional(),
   caption: z.string().max(2000).optional(),
+  media: z.object({ type: z.string().optional(), color: z.string().optional(), emoji: z.string().optional(), url: z.string().url().optional() }).optional(),
   // Thời gian bình chọn mỗi vòng (giờ kể từ khi ván mở). null/absent = vô hạn.
   closesInHours: z.number().int().min(1).max(8760).nullable().optional(),
   allowGuestPresent: z.boolean().optional(),

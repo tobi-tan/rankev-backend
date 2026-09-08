@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, max } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, max } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   tournaments,
@@ -9,6 +9,7 @@ import {
   series,
   seriesPosts,
   users,
+  comments,
   type TournamentMatch,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
@@ -27,6 +28,7 @@ export interface Contestant {
 // Cấu hình dùng lại cho mọi ván (vòng 0 và các vòng sinh khi chốt vòng).
 export interface TournamentSettings {
   caption?: string | null;
+  media?: { type?: string; color?: string; emoji?: string; url?: string } | null;
   closesInHours?: number | null;
   allowGuestPresent?: boolean;
   // 'vote' = đi tiếp theo phiếu; 'result' = theo kết quả thật (giải dự đoán).
@@ -120,6 +122,7 @@ export async function createTournament(authorId: string, input: CreateTournament
 
     const settings: TournamentSettings = {
       caption: input.caption ?? null,
+      media: input.media ?? null,
       closesInHours: input.closesInHours ?? null,
       allowGuestPresent: input.allowGuestPresent ?? false,
       advanceMode: input.advanceMode ?? 'vote',
@@ -219,6 +222,7 @@ export async function getTournament(id: string, viewerId?: string) {
   }
 
   const settings = (t.settings as TournamentSettings) ?? {};
+  const [{ cc } = { cc: 0 }] = await db.select({ cc: count() }).from(comments).where(and(eq(comments.tournamentId, id), isNull(comments.deletedAt)));
   const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
   return {
     id: t.id,
@@ -226,6 +230,8 @@ export async function getTournament(id: string, viewerId?: string) {
     title: t.title,
     category: t.category,
     caption: settings.caption ?? null,
+    media: settings.media ?? null,
+    commentCount: Number(cc) || 0,
     status: t.status,
     advanceMode: settings.advanceMode ?? 'vote',
     currentRound: t.currentRound,
@@ -411,20 +417,28 @@ export async function listTournamentFeed(limit = 30) {
     if (m.postId) { a.matchCount++; a.votes += votesByPost.get(m.postId) ?? 0; }
     agg.set(m.tid, a);
   }
+  // Số bình luận mỗi giải (không tính đã xoá).
+  const ccRows = ids.length
+    ? await db.select({ tid: comments.tournamentId, c: count() }).from(comments).where(and(inArray(comments.tournamentId, ids), isNull(comments.deletedAt))).groupBy(comments.tournamentId)
+    : [];
+  const ccBy = new Map(ccRows.map((r) => [r.tid as string, Number(r.c)]));
 
   return tRows.map((r) => {
     const a = agg.get(r.t.id) ?? { rounds: 0, matchCount: 0, votes: 0 };
+    const settings = (r.t.settings as TournamentSettings) ?? {};
     return {
       id: r.t.id,
       type: 'tournament' as const,
       title: r.t.title,
       category: r.t.category,
+      media: settings.media ?? null,
       status: r.t.status,
       currentRound: r.t.currentRound,
       championRef: r.t.championRef,
       rounds: a.rounds,
       matchCount: a.matchCount,
       totalVotes: a.votes,
+      commentCount: ccBy.get(r.t.id) ?? 0,
       createdAt: r.t.createdAt.toISOString(),
       author: r.author ? toPublicUser(r.author) : null,
     };
