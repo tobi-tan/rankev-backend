@@ -5,7 +5,7 @@ import { users } from '../../db/schema';
 import { notFound } from '../../lib/errors';
 import { parse } from '../../lib/validate';
 import { authenticate, requireUserId } from '../../plugins/auth';
-import { getMyRankUps } from '../rankups/rankups.service';
+import { getMyRankUps, getRankUpCounts } from '../rankups/rankups.service';
 import { toPublicUser } from './users.serializer';
 import { updateProfileSchema } from './users.schemas';
 import * as usersService from './users.service';
@@ -45,11 +45,12 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
     return { items };
   });
 
-  // GET /users/:id — public profile
+  // GET /users/:id — public profile (kèm số RankUp mỗi tầng: quan tâm/yêu thích/fan cuồng)
   app.get<{ Params: { id: string } }>('/:id', async (req) => {
     const [user] = await db.select().from(users).where(eq(users.id, req.params.id));
     if (!user) throw notFound('User not found');
-    return { user: toPublicUser(user) };
+    const rankCounts = await getRankUpCounts(user.id);
+    return { user: toPublicUser(user), rankCounts };
   });
 
   // GET /users/:id/posts — a user's public posts

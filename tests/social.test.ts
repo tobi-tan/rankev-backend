@@ -89,6 +89,19 @@ describe('rankup', () => {
     const self = await app.inject({ method: 'POST', url: `/users/${a.user.id}/rankup`, headers: bearer(a.accessToken), payload: { tier: 1 } });
     expect(self.statusCode).toBe(400);
   });
+
+  it('hồ sơ trả số RankUp mỗi tầng (quan tâm/yêu thích/fan cuồng)', async () => {
+    const author = await registerUser(app);
+    const f1 = await registerUser(app);
+    const f2 = await registerUser(app);
+    const f3 = await registerUser(app);
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/rankup`, headers: bearer(f1.accessToken), payload: { tier: 2 } });
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/rankup`, headers: bearer(f2.accessToken), payload: { tier: 2 } });
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/rankup`, headers: bearer(f3.accessToken), payload: { tier: 3 } });
+    const prof = await app.inject({ method: 'GET', url: `/users/${author.user.id}` });
+    expect(prof.statusCode).toBe(200);
+    expect(prof.json().rankCounts).toMatchObject({ tier1: 0, tier2: 2, tier3: 1, total: 3 });
+  });
 });
 
 describe('series + sessions', () => {
