@@ -161,6 +161,21 @@ export const bookmarks = pgTable(
   }),
 );
 
+// Kho "Đã lưu" chung: bài viết / người dùng / bình luận (gộp bookmark + giỏ Rankie).
+export const saves = pgTable(
+  'saves',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    refType: text('ref_type').notNull(), // 'post' | 'user' | 'comment'
+    refId: text('ref_id').notNull(),
+    preview: jsonb('preview'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.userId, t.refType, t.refId] }) }),
+);
+
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {

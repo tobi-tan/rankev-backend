@@ -23,6 +23,7 @@ import tournamentsRoutes from './modules/tournaments/tournaments.routes';
 import messagingRoutes from './modules/messaging/messaging.routes';
 import feedRoutes from './modules/feed/feed.routes';
 import rankupsRoutes from './modules/rankups/rankups.routes';
+import savesRoutes from './modules/saves/saves.routes';
 import seriesRoutes from './modules/series/series.routes';
 import sessionsRoutes from './modules/sessions/sessions.routes';
 import uploadsRoutes, { UPLOAD_DIR } from './modules/uploads/uploads.routes';
@@ -85,6 +86,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(messagingRoutes);
   await app.register(feedRoutes);
   await app.register(rankupsRoutes);
+  await app.register(savesRoutes);
   await app.register(seriesRoutes, { prefix: '/series' });
   await app.register(sessionsRoutes);
   await app.register(liveRoutes);
