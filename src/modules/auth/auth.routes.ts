@@ -2,9 +2,10 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { isProd, env } from '../../env';
 import { parse } from '../../lib/validate';
 import { toPublicUser } from '../users/users.serializer';
-import { registerSchema, loginSchema } from './auth.schemas';
+import { registerSchema, loginSchema, socialSchema } from './auth.schemas';
 import * as authService from './auth.service';
 import type { IssuedTokens } from './auth.service';
+import { verifySocialToken, isProviderEnabled } from './social';
 
 export const REFRESH_COOKIE = 'rankev_rt';
 const REFRESH_COOKIE_PATH = '/auth';
@@ -62,6 +63,26 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       refreshToken: tokens.refreshToken,
     });
   });
+
+  // POST /auth/social — đăng nhập bằng Google/Facebook/Apple (client gửi token của provider)
+  app.post('/social', authLimit, async (req, reply) => {
+    const body = parse(socialSchema, req.body);
+    const profile = await verifySocialToken(body.provider, body.token);
+    const { user, tokens } = await authService.socialLogin(profile);
+    setRefreshCookie(reply, tokens);
+    return reply.send({
+      user: toPublicUser(user),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    });
+  });
+
+  // GET /auth/providers — provider nào đang bật (client ẩn nút chưa cấu hình)
+  app.get('/providers', async () => ({
+    google: isProviderEnabled('google'),
+    facebook: isProviderEnabled('facebook'),
+    apple: isProviderEnabled('apple'),
+  }));
 
   // POST /auth/refresh — accepts the refresh token from the request body
   // (native) or the httpOnly cookie (web), rotates it, returns a fresh pair.

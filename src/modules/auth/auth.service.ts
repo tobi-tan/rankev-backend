@@ -10,6 +10,7 @@ import {
 } from '../../lib/tokens';
 import { conflict, unauthorized } from '../../lib/errors';
 import type { RegisterInput, LoginInput } from './auth.schemas';
+import type { SocialProfile } from './social';
 
 export interface IssuedTokens {
   accessToken: string;
@@ -61,10 +62,69 @@ export async function login(input: LoginInput): Promise<{ user: User; tokens: Is
   const [user] = await db.select().from(users).where(eq(users.email, input.email.toLowerCase()));
   // Constant-ish failure path: still returns a generic message.
   if (!user) throw unauthorized('Invalid email or password');
+  // Tài khoản mạng xã hội (không có mật khẩu) → hướng dẫn dùng nút MXH.
+  if (!user.passwordHash) throw unauthorized('Tài khoản này đăng nhập bằng mạng xã hội');
 
   const ok = await verifyPassword(input.password, user.passwordHash);
   if (!ok) throw unauthorized('Invalid email or password');
 
+  const tokens = await issueTokens(user.id);
+  return { user, tokens };
+}
+
+// Sinh handle duy nhất từ tên/email.
+async function uniqueHandle(seed: string): Promise<string> {
+  const base = (seed || 'user').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_]/g, '').slice(0, 20) || 'user';
+  for (let i = 0; i < 50; i++) {
+    const h = i === 0 ? base : `${base}${i}`;
+    const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.handle, h));
+    if (!taken) return h;
+  }
+  return `${base}${Date.now().toString(36)}`;
+}
+
+/** Đăng nhập/đăng ký bằng mạng xã hội: liên kết theo provider hoặc email, tạo mới nếu chưa có. */
+export async function socialLogin(profile: SocialProfile): Promise<{ user: User; tokens: IssuedTokens }> {
+  // 1) Đã liên kết provider trước đó.
+  const [byProvider] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.provider, profile.provider), eq(users.providerId, profile.providerId)));
+  if (byProvider) {
+    const tokens = await issueTokens(byProvider.id);
+    return { user: byProvider, tokens };
+  }
+
+  // 2) Trùng email → liên kết provider vào tài khoản sẵn có.
+  if (profile.email) {
+    const [byEmail] = await db.select().from(users).where(eq(users.email, profile.email));
+    if (byEmail) {
+      const [linked] = await db
+        .update(users)
+        .set({ provider: profile.provider, providerId: profile.providerId, avatarUrl: byEmail.avatarUrl || profile.avatarUrl })
+        .where(eq(users.id, byEmail.id))
+        .returning();
+      const tokens = await issueTokens(linked.id);
+      return { user: linked, tokens };
+    }
+  }
+
+  // 3) Tạo tài khoản mới (không mật khẩu). Email có thể null (Apple ẩn email) → dùng placeholder.
+  const email = profile.email || `${profile.provider}_${profile.providerId}@users.rankev.app`;
+  const handle = await uniqueHandle(profile.email ? profile.email.split('@')[0] : profile.name);
+  const [user] = await db
+    .insert(users)
+    .values({
+      email,
+      handle,
+      name: profile.name || handle,
+      passwordHash: null,
+      provider: profile.provider,
+      providerId: profile.providerId,
+      avatarUrl: profile.avatarUrl,
+      verified: true,
+    })
+    .returning();
   const tokens = await issueTokens(user.id);
   return { user, tokens };
 }

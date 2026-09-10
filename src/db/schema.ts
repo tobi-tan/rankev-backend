@@ -25,7 +25,9 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   handle: text('handle').notNull().unique(),
   name: text('name').notNull(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash'), // null = tài khoản mạng xã hội (không có mật khẩu)
+  provider: text('provider'),          // 'google' | 'facebook' | 'apple' | null (email)
+  providerId: text('provider_id'),
   avatarEmoji: text('avatar_emoji'),
   avatarColor: text('avatar_color'),
   avatarUrl: text('avatar_url'),

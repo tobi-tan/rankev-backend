@@ -21,6 +21,11 @@ const EnvSchema = z.object({
   R2_PUBLIC_URL: z.string().optional(), // VD: https://pub-xxx.r2.dev
   // Dùng để dựng URL tuyệt đối cho ảnh khi lưu local ở production (không có R2).
   PUBLIC_BASE_URL: z.string().optional(),
+
+  // --- Đăng nhập mạng xã hội. Bỏ trống = tắt provider đó. ---
+  GOOGLE_CLIENT_ID: z.string().optional(),     // OAuth Client ID (Web) ở Google Cloud Console
+  FACEBOOK_APP_ID: z.string().optional(),      // App ID ở Meta for Developers
+  APPLE_CLIENT_ID: z.string().optional(),      // Services ID ở Apple Developer (vd com.rankev.web)
 });
 
 const parsed = EnvSchema.safeParse(process.env);

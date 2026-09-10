@@ -14,5 +14,10 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const socialSchema = z.object({
+  provider: z.enum(['google', 'facebook', 'apple']),
+  token: z.string().min(1), // ID token (Google/Apple) hoặc access token (Facebook)
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
