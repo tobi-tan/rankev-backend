@@ -61,12 +61,12 @@ export async function register(input: RegisterInput): Promise<{ user: User; toke
 export async function login(input: LoginInput): Promise<{ user: User; tokens: IssuedTokens }> {
   const [user] = await db.select().from(users).where(eq(users.email, input.email.toLowerCase()));
   // Constant-ish failure path: still returns a generic message.
-  if (!user) throw unauthorized('Invalid email or password');
+  if (!user) throw unauthorized('Sai email hoặc mật khẩu');
   // Tài khoản mạng xã hội (không có mật khẩu) → hướng dẫn dùng nút MXH.
   if (!user.passwordHash) throw unauthorized('Tài khoản này đăng nhập bằng mạng xã hội');
 
   const ok = await verifyPassword(input.password, user.passwordHash);
-  if (!ok) throw unauthorized('Invalid email or password');
+  if (!ok) throw unauthorized('Sai email hoặc mật khẩu');
 
   const tokens = await issueTokens(user.id);
   return { user, tokens };
