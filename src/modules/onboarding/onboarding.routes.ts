@@ -10,7 +10,7 @@ const voteSchema = z.object({
 });
 
 const demoSchema = z.object({
-  age: z.string().max(20).nullish(),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày sinh dạng YYYY-MM-DD').nullish(),
   gender: z.string().max(20).nullish(),
   occupation: z.string().max(60).nullish(),
   visible: z.record(z.boolean()).optional(),

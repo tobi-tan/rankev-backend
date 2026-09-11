@@ -13,10 +13,23 @@ export interface PublicUser {
   createdAt: string;
   // Nhân khẩu học (tùy chọn). Với người xem khác: chỉ hiện field đã đặt CÔNG KHAI.
   // Với chính chủ (self=true): hiện tất cả + cờ demographicsPublic để chỉnh.
+  age?: number | null;        // suy ra từ ngày sinh
   ageRange?: string | null;
+  dateOfBirth?: string | null; // chỉ trả cho chính chủ
   gender?: string | null;
   occupation?: string | null;
   demographicsPublic?: Record<string, boolean>;
+}
+
+function ageFromDob(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let a = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
+  return a >= 0 && a <= 120 ? a : null;
 }
 
 /**
@@ -38,13 +51,16 @@ export function toPublicUser(u: User, self = false): PublicUser {
     createdAt: u.createdAt.toISOString(),
   };
   const pub = (u.demographicsPublic || {}) as Record<string, boolean>;
+  const age = ageFromDob(u.dateOfBirth);
   if (self) {
+    base.age = age;
     base.ageRange = u.ageRange;
+    base.dateOfBirth = u.dateOfBirth;
     base.gender = u.gender;
     base.occupation = u.occupation;
     base.demographicsPublic = pub;
   } else {
-    if (pub.age) base.ageRange = u.ageRange;
+    if (pub.age) { base.age = age; base.ageRange = u.ageRange; }
     if (pub.gender) base.gender = u.gender;
     if (pub.occupation) base.occupation = u.occupation;
   }

@@ -39,22 +39,26 @@ describe('onboarding: vote cộng đồng + nhân khẩu học', () => {
     const other = await registerUser(app);
     const res = await app.inject({
       method: 'POST', url: '/onboarding/demographics', headers: bearer(me.accessToken),
-      payload: { age: '18-24', gender: 'Nữ', occupation: 'Kỹ thuật/IT', visible: { age: true, gender: false, occupation: false } },
+      payload: { dob: '2004-06-15', gender: 'Nữ', occupation: 'Thợ săn rồng', visible: { age: true, gender: false, occupation: false } },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().stats.length).toBe(3); // 3 field → 3 khoá thống kê
+    const ageStat = res.json().stats.find((s: any) => s.key === 'age');
+    expect(ageStat.mine).toEqual(['18-24']); // 2004 → khoảng 18-24
 
-    // Chính chủ (/users/me) thấy TẤT CẢ + cờ công khai
+    // Chính chủ (/users/me) thấy TẤT CẢ + tuổi suy ra + cờ công khai
     const mine = await app.inject({ method: 'GET', url: '/users/me', headers: bearer(me.accessToken) });
     const mu = mine.json().user;
     expect(mu.ageRange).toBe('18-24');
+    expect(typeof mu.age).toBe('number');
     expect(mu.gender).toBe('Nữ');
+    expect(mu.occupation).toBe('Thợ săn rồng'); // nghề tự do (không giới hạn danh mục)
     expect(mu.demographicsPublic).toMatchObject({ age: true, gender: false, occupation: false });
 
     // Người khác chỉ thấy field CÔNG KHAI (age), field ẩn coi như không có
     const pub = await app.inject({ method: 'GET', url: `/users/handle/${other ? me.user.handle : ''}` });
     const pu = pub.json().user;
-    expect(pu.ageRange).toBe('18-24');
+    expect(pu.age).toBe(mu.age);
     expect(pu.gender).toBeUndefined();
     expect(pu.occupation).toBeUndefined();
 

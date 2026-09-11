@@ -35,7 +35,8 @@ export const users = pgTable('users', {
   verified: boolean('verified').notNull().default(false),
   rankPoints: integer('rank_points').notNull().default(0),
   // Nhân khẩu học (tùy chọn). Ẩn = riêng tư (không hiện công khai) nhưng vẫn lưu.
-  ageRange: text('age_range'),
+  ageRange: text('age_range'), // khoảng tuổi (suy ra từ ngày sinh, dùng cho thống kê)
+  dateOfBirth: text('date_of_birth'), // 'YYYY-MM-DD' (cột date; đọc/ghi dạng chuỗi)
   gender: text('gender'),
   occupation: text('occupation'),
   demographicsPublic: jsonb('demographics_public').$type<Record<string, boolean>>().notNull().default({}),

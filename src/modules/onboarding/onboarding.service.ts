@@ -13,12 +13,28 @@ export const ONBOARDING_OPTIONS: Record<string, string[]> = {
   occupation: ['Học sinh/Sinh viên', 'Văn phòng', 'Kinh doanh', 'Kỹ thuật/IT', 'Sáng tạo/Nghệ thuật', 'Khác'],
 };
 const MULTI_KEYS = new Set(['type']);
-const DEMO_KEYS = { age: 'ageRange', gender: 'gender', occupation: 'occupation' } as const;
 
 export interface KeyStats {
   key: string;
   counts: Record<string, number>;
   voters: number;
+  mine?: string[]; // lựa chọn của chính người gọi (để tô đậm + tính "% giống bạn")
+}
+
+/** Khoảng tuổi suy ra từ ngày sinh 'YYYY-MM-DD' (khớp ONBOARDING_OPTIONS.age). */
+export function ageBucketFromDob(dob: string): string | null {
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  if (age < 0 || age > 120) return null;
+  if (age < 18) return '<18';
+  if (age <= 24) return '18-24';
+  if (age <= 34) return '25-34';
+  if (age <= 44) return '35-44';
+  return '45+';
 }
 
 function validate(key: string, choices: string[]): string[] {
@@ -37,31 +53,47 @@ export async function recordVote(userId: string, key: string, choices: string[])
     await tx.delete(onboardingVotes).where(and(eq(onboardingVotes.userId, userId), eq(onboardingVotes.voteKey, key)));
     await tx.insert(onboardingVotes).values(clean.map((choice) => ({ userId, voteKey: key, choice })));
   });
-  return keyStats(key);
+  return { ...(await keyStats(key)), mine: clean };
 }
 
-/** Lưu nhân khẩu học lên hồ sơ (kèm ẩn/công khai) + ghi phiếu để tính thống kê chung. */
+/**
+ * Lưu MỘT/ NHIỀU field nhân khẩu học lên hồ sơ (kèm ẩn/công khai) + ghi phiếu.
+ * `dob` (YYYY-MM-DD) → suy ra khoảng tuổi cho thống kê + lưu ngày sinh. occupation tự do.
+ * Trả về stats cho từng field đã gửi (kèm `mine` để hiện "% giống bạn").
+ */
 export async function saveDemographics(
   userId: string,
-  input: { age?: string | null; gender?: string | null; occupation?: string | null; visible?: Record<string, boolean> },
+  input: { dob?: string | null; gender?: string | null; occupation?: string | null; visible?: Record<string, boolean> },
 ): Promise<{ stats: KeyStats[] }> {
   const patch: Record<string, unknown> = {};
   const publicMap: Record<string, boolean> = {};
   const votes: { key: string; choice: string }[] = [];
 
-  for (const [key, col] of Object.entries(DEMO_KEYS)) {
-    const val = (input as Record<string, string | null | undefined>)[key];
-    if (val === undefined) continue; // không đụng tới field không gửi
-    const allowed = ONBOARDING_OPTIONS[key];
-    if (val === null || val === '') {
-      patch[col] = null;
-    } else if (allowed.includes(val)) {
-      patch[col] = val;
-      votes.push({ key, choice: val });
-    } else {
-      throw badRequest(`Giá trị ${key} không hợp lệ`);
+  // Ngày sinh → khoảng tuổi
+  if (input.dob !== undefined) {
+    if (!input.dob) { patch.dateOfBirth = null; patch.ageRange = null; }
+    else {
+      const bucket = ageBucketFromDob(input.dob);
+      if (!bucket) throw badRequest('Ngày sinh không hợp lệ');
+      patch.dateOfBirth = input.dob;
+      patch.ageRange = bucket;
+      votes.push({ key: 'age', choice: bucket });
     }
-    publicMap[key] = !!input.visible?.[key];
+    publicMap.age = !!input.visible?.age;
+  }
+  // Giới tính (giới hạn danh mục)
+  if (input.gender !== undefined) {
+    if (!input.gender) { patch.gender = null; }
+    else if (ONBOARDING_OPTIONS.gender.includes(input.gender)) { patch.gender = input.gender; votes.push({ key: 'gender', choice: input.gender }); }
+    else throw badRequest('Giới tính không hợp lệ');
+    publicMap.gender = !!input.visible?.gender;
+  }
+  // Nghề nghiệp (tự do — search droplist)
+  if (input.occupation !== undefined) {
+    const occ = (input.occupation || '').trim().slice(0, 60);
+    if (!occ) { patch.occupation = null; }
+    else { patch.occupation = occ; votes.push({ key: 'occupation', choice: occ }); }
+    publicMap.occupation = !!input.visible?.occupation;
   }
 
   await db.transaction(async (tx) => {
@@ -75,8 +107,7 @@ export async function saveDemographics(
     }
   });
 
-  const keys = votes.map((v) => v.key);
-  const stats = await Promise.all(keys.map((k) => keyStats(k)));
+  const stats = await Promise.all(votes.map(async (v) => ({ ...(await keyStats(v.key)), mine: [v.choice] })));
   return { stats };
 }
 
