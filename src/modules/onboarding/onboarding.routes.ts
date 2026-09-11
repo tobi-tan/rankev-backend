@@ -34,4 +34,7 @@ export default async function onboardingRoutes(app: FastifyInstance): Promise<vo
     const keys = req.query.keys ? req.query.keys.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
     return { stats: await onboarding.getStats(keys) };
   });
+
+  // GET /onboarding/examples — 1 bài THẬT mỗi loại để preview trong onboarding.
+  app.get('/onboarding/examples', async () => onboarding.getExamples());
 }

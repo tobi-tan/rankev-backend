@@ -1,6 +1,8 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { onboardingVotes, users } from '../../db/schema';
+import {
+  onboardingVotes, users, posts, rankieOptions, pathQuestions, pathAnswers, deckQuestions, deckOptions,
+} from '../../db/schema';
 import { badRequest } from '../../lib/errors';
 
 // Danh mục lựa chọn hợp lệ cho từng khoá (giữ thống kê sạch). type = đa chọn.
@@ -129,4 +131,77 @@ export async function getStats(keys?: string[]): Promise<Record<string, KeyStats
   const out: Record<string, KeyStats> = {};
   await Promise.all(wanted.map(async (k) => { out[k] = await keyStats(k); }));
   return out;
+}
+
+// ---------- Ví dụ THẬT cho onboarding (preview mỗi loại bằng 1 bài post thật) ----------
+
+async function exampleRankie() {
+  const [rk] = await db
+    .select({ id: posts.id, title: posts.title })
+    .from(posts)
+    .where(
+      and(
+        eq(posts.type, 'rankie'),
+        sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`,
+        sql`(${posts.opensAt} IS NULL OR ${posts.opensAt} <= now())`,
+      ),
+    )
+    .orderBy(
+      sql`(SELECT COALESCE(SUM(ro.votes),0) FROM rankie_options ro WHERE ro.rankie_id = ${posts.id}) DESC`,
+      desc(posts.createdAt),
+    )
+    .limit(1);
+  if (!rk) return null;
+  const opts = await db
+    .select({ label: rankieOptions.label, emoji: rankieOptions.emoji, votes: rankieOptions.votes })
+    .from(rankieOptions)
+    .where(eq(rankieOptions.rankieId, rk.id))
+    .orderBy(desc(rankieOptions.votes), rankieOptions.position);
+  const total = opts.reduce((s, o) => s + (Number(o.votes) || 0), 0);
+  return {
+    id: rk.id,
+    title: rk.title,
+    total,
+    options: opts.slice(0, 3).map((o) => ({ label: o.label, emoji: o.emoji, votes: Number(o.votes) || 0 })),
+  };
+}
+
+async function examplePath() {
+  const [p] = await db.select({ id: posts.id, title: posts.title }).from(posts)
+    .where(eq(posts.type, 'path'))
+    .orderBy(sql`(SELECT COUNT(*) FROM path_questions pq WHERE pq.post_id = ${posts.id}) DESC`, desc(posts.createdAt))
+    .limit(1);
+  if (!p) return null;
+  const qs = await db.select({ id: pathQuestions.id, text: pathQuestions.text, isEntry: pathQuestions.isEntry })
+    .from(pathQuestions).where(eq(pathQuestions.postId, p.id)).orderBy(desc(pathQuestions.isEntry), pathQuestions.position);
+  const q = qs[0];
+  const answers = q
+    ? await db.select({ label: pathAnswers.label, emoji: pathAnswers.emoji }).from(pathAnswers)
+        .where(eq(pathAnswers.questionId, q.id)).orderBy(pathAnswers.position).limit(3)
+    : [];
+  return { id: p.id, title: p.title, question: q?.text || null, branches: answers.map((a) => ({ label: a.label, emoji: a.emoji })) };
+}
+
+async function exampleDeck(mode: 'survey' | 'exam') {
+  const [d] = await db.select({ id: posts.id, title: posts.title }).from(posts)
+    .where(and(eq(posts.type, 'deck'), eq(posts.deckMode, mode)))
+    .orderBy(sql`(SELECT COUNT(*) FROM deck_questions dq WHERE dq.post_id = ${posts.id}) DESC`, desc(posts.createdAt))
+    .limit(1);
+  if (!d) return null;
+  const qs = await db.select({ id: deckQuestions.id, text: deckQuestions.text }).from(deckQuestions)
+    .where(eq(deckQuestions.postId, d.id)).orderBy(deckQuestions.position);
+  const first = qs[0];
+  const options = first
+    ? await db.select({ label: deckOptions.label, correct: deckOptions.correct }).from(deckOptions)
+        .where(eq(deckOptions.questionId, first.id)).orderBy(deckOptions.position).limit(4)
+    : [];
+  return { id: d.id, title: d.title, questionCount: qs.length, question: first?.text || null, options };
+}
+
+/** Một bài THẬT cho mỗi loại (rankie/path/survey/exam) để preview trong onboarding. */
+export async function getExamples() {
+  const [rankie, path, survey, exam] = await Promise.all([
+    exampleRankie(), examplePath(), exampleDeck('survey'), exampleDeck('exam'),
+  ]);
+  return { rankie, path, survey, exam };
 }
