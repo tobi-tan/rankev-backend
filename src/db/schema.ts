@@ -34,8 +34,30 @@ export const users = pgTable('users', {
   bio: text('bio'),
   verified: boolean('verified').notNull().default(false),
   rankPoints: integer('rank_points').notNull().default(0),
+  // Nhân khẩu học (tùy chọn). Ẩn = riêng tư (không hiện công khai) nhưng vẫn lưu.
+  ageRange: text('age_range'),
+  gender: text('gender'),
+  occupation: text('occupation'),
+  demographicsPublic: jsonb('demographics_public').$type<Record<string, boolean>>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Phiếu onboarding — hiện kết quả cộng đồng ngay trong onboarding.
+export const onboardingVotes = pgTable(
+  'onboarding_votes',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    voteKey: text('vote_key').notNull(), // 'theme' | 'type' | 'rating' | 'age' | 'gender' | 'occupation'
+    choice: text('choice').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.voteKey, t.choice] }),
+    keyIdx: index('onboarding_votes_key_idx').on(t.voteKey, t.choice),
+  }),
+);
 
 export const posts = pgTable(
   'posts',

@@ -17,7 +17,7 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw notFound('User not found');
     const rankUps = await getMyRankUps(userId);
-    return { user: toPublicUser(user), rankUps };
+    return { user: toPublicUser(user, true), rankUps };
   });
 
   // PATCH /users/me — update profile

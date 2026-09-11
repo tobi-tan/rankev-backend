@@ -27,7 +27,7 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
 
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw notFound('User not found');
-  return toPublicUser(user);
+  return toPublicUser(user, true);
 }
 
 /** Tra hồ sơ theo @handle (không phân biệt hoa/thường, bỏ @ đầu). */

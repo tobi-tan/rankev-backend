@@ -17,6 +17,7 @@ import moderationRoutes from './modules/moderation/moderation.routes';
 import legalRoutes from './modules/legal/legal.routes';
 import commentsRoutes from './modules/comments/comments.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
+import onboardingRoutes from './modules/onboarding/onboarding.routes';
 import bookmarksRoutes from './modules/bookmarks/bookmarks.routes';
 import pathsRoutes from './modules/paths/paths.routes';
 import decksRoutes from './modules/decks/decks.routes';
@@ -96,6 +97,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(legalRoutes);
   await app.register(commentsRoutes);
   await app.register(notificationsRoutes);
+  await app.register(onboardingRoutes);
   await app.register(bookmarksRoutes);
   await app.register(wsRoutes);
 

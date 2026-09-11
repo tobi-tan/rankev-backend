@@ -46,7 +46,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     // refreshToken is returned in the body for native clients (stored in secure
     // storage); web clients ignore it and rely on the httpOnly cookie.
     return reply.code(201).send({
-      user: toPublicUser(user),
+      user: toPublicUser(user, true),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     });
@@ -58,7 +58,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const { user, tokens } = await authService.login(body);
     setRefreshCookie(reply, tokens);
     return reply.send({
-      user: toPublicUser(user),
+      user: toPublicUser(user, true),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     });
@@ -71,7 +71,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const { user, tokens } = await authService.socialLogin(profile);
     setRefreshCookie(reply, tokens);
     return reply.send({
-      user: toPublicUser(user),
+      user: toPublicUser(user, true),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     });
