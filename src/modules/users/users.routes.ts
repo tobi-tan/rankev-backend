@@ -45,6 +45,20 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
     return { items };
   });
 
+  // GET /users/handle/:handle — hồ sơ công khai theo @handle (cho link ngắn + @nhắc tên)
+  app.get<{ Params: { handle: string } }>('/handle/:handle', async (req) => {
+    const user = await usersService.getByHandle(req.params.handle);
+    const rankCounts = await getRankUpCounts(user.id);
+    return { user, rankCounts };
+  });
+
+  // GET /users/handle/:handle/posts — bài công khai của user theo @handle
+  app.get<{ Params: { handle: string } }>('/handle/:handle/posts', async (req) => {
+    const user = await usersService.getByHandle(req.params.handle);
+    const items = await usersService.getUserPosts(user.id);
+    return { items };
+  });
+
   // GET /users/:id — public profile (kèm số RankUp mỗi tầng: quan tâm/yêu thích/fan cuồng)
   app.get<{ Params: { id: string } }>('/:id', async (req) => {
     const [user] = await db.select().from(users).where(eq(users.id, req.params.id));

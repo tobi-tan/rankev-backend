@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, posts, participations } from '../../db/schema';
 import { conflict, notFound } from '../../lib/errors';
@@ -28,6 +28,30 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw notFound('User not found');
   return toPublicUser(user);
+}
+
+/** Tra hồ sơ theo @handle (không phân biệt hoa/thường, bỏ @ đầu). */
+export async function getByHandle(handleRaw: string): Promise<PublicUser> {
+  const handle = handleRaw.replace(/^@/, '').trim();
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.handle}) = lower(${handle})`);
+  if (!user) throw notFound('User not found');
+  return toPublicUser(user);
+}
+
+/** Id thật của user theo handle, hoặc null (dùng cho @nhắc tên). */
+export async function resolveHandles(handles: string[]): Promise<Map<string, string>> {
+  const cleaned = [...new Set(handles.map((h) => h.replace(/^@/, '').toLowerCase()).filter(Boolean))];
+  if (cleaned.length === 0) return new Map();
+  const rows = await db
+    .select({ id: users.id, handle: users.handle })
+    .from(users)
+    .where(inArray(sql`lower(${users.handle})`, cleaned));
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(r.handle.toLowerCase(), r.id);
+  return map;
 }
 
 /** A user's own posts (any type) as feed summaries, newest first. */

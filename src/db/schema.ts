@@ -178,6 +178,27 @@ export const saves = pgTable(
   (t) => ({ pk: primaryKey({ columns: [t.userId, t.refType, t.refId] }) }),
 );
 
+// Thông báo (hiện chỉ dùng cho @nhắc tên trong bình luận; mở rộng type sau).
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id') // người NHẬN thông báo
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // 'mention'
+    actorId: uuid('actor_id') // người gây ra (người bình luận)
+      .references(() => users.id, { onDelete: 'cascade' }),
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    tournamentId: uuid('tournament_id').references(() => tournaments.id, { onDelete: 'cascade' }),
+    commentId: uuid('comment_id').references(() => comments.id, { onDelete: 'cascade' }),
+    text: text('text'), // trích đoạn nội dung để hiển thị nhanh
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ userIdx: index('notifications_user_idx').on(t.userId, t.createdAt) }),
+);
+
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {

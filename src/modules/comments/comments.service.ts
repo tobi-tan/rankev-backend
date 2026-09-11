@@ -6,6 +6,7 @@ import { decodeCursor, encodeCursor } from '../../lib/cursor';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 import { toCommentView, type CommentView } from './comments.serializer';
 import type { CreateCommentInput, ListCommentsQuery } from './comments.schemas';
+import { createMentionNotifications } from '../notifications/notifications.service';
 
 async function assertPost(postId: string): Promise<void> {
   const [p] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
@@ -125,6 +126,7 @@ export async function createComment(
     .returning();
 
   const [author] = await db.select().from(users).where(eq(users.id, userId));
+  await createMentionNotifications({ actorId: userId, text: row.text, postId, commentId: row.id }).catch(() => {});
   return toCommentView(row, author ? toPublicUser(author) : null, 0, 0);
 }
 
@@ -188,6 +190,7 @@ export async function createTournamentComment(
     .values({ tournamentId, userId, parentId: input.parentId, text: input.text?.trim() || null, imageUrl: input.imageUrl, emoji: input.emoji, supports: input.supports })
     .returning();
   const [author] = await db.select().from(users).where(eq(users.id, userId));
+  await createMentionNotifications({ actorId: userId, text: row.text, tournamentId, commentId: row.id }).catch(() => {});
   return toCommentView(row, author ? toPublicUser(author) : null, 0, 0);
 }
 
