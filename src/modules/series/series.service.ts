@@ -102,11 +102,26 @@ export async function addPost(seriesId: string, userId: string, postId: string, 
   return { ok: true };
 }
 
-export async function removePost(seriesId: string, userId: string, postId: string) {
+export async function removePost(
+  seriesId: string,
+  userId: string,
+  postId: string,
+): Promise<{ removed: true; seriesDeleted: boolean }> {
   await assertOwner(seriesId, userId);
   await db
     .delete(seriesPosts)
     .where(and(eq(seriesPosts.seriesId, seriesId), eq(seriesPosts.postId, postId)));
+  // Gỡ chapter = chỉ cắt liên kết; bài viết vẫn còn (thành bài độc lập).
+  // Series rỗng (0 chapter) sau khi gỡ → tự xoá cho gọn.
+  const [row] = await db
+    .select({ c: count() })
+    .from(seriesPosts)
+    .where(eq(seriesPosts.seriesId, seriesId));
+  if (Number(row?.c ?? 0) === 0) {
+    await db.delete(series).where(eq(series.id, seriesId));
+    return { removed: true, seriesDeleted: true };
+  }
+  return { removed: true, seriesDeleted: false };
 }
 
 export async function reorder(seriesId: string, userId: string, postIds: string[]) {

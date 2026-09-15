@@ -43,9 +43,9 @@ export default async function seriesRoutes(app: FastifyInstance): Promise<void> 
   app.delete<{ Params: { id: string; postId: string } }>(
     '/:id/posts/:postId',
     { preHandler: authenticate },
-    async (req, reply) => {
-      await svc.removePost(req.params.id, requireUserId(req), req.params.postId);
-      return reply.code(204).send();
+    async (req) => {
+      // Trả { removed, seriesDeleted } để client biết series có bị tự xoá (rỗng) không.
+      return svc.removePost(req.params.id, requireUserId(req), req.params.postId);
     },
   );
 
