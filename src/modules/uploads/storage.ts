@@ -33,11 +33,47 @@ async function getR2Client() {
   return cachedClient;
 }
 
+/** Cloudinary đã cấu hình đủ 3 biến chưa? (KHÔNG cần thẻ) */
+export function isCloudinaryConfigured(): boolean {
+  return Boolean(
+    env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET,
+  );
+}
+
+/** Upload lên Cloudinary bằng signed upload (fetch + crypto, không cần SDK). Trả secure_url. */
+async function uploadToCloudinary(
+  key: string,
+  body: Buffer,
+  contentType: string,
+): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = key.replace(/\.[^/.]+$/, ''); // bỏ đuôi file (Cloudinary tự thêm)
+  // Chữ ký: các param (trừ file/api_key/cloud_name/resource_type) sắp xếp a→z + api_secret.
+  const toSign = `public_id=${publicId}&timestamp=${timestamp}`;
+  const signature = createHash('sha1')
+    .update(toSign + (env.CLOUDINARY_API_SECRET as string))
+    .digest('hex');
+  const form = new FormData();
+  form.append('file', `data:${contentType};base64,${body.toString('base64')}`);
+  form.append('api_key', env.CLOUDINARY_API_KEY as string);
+  form.append('timestamp', String(timestamp));
+  form.append('public_id', publicId);
+  form.append('signature', signature);
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/auto/upload`,
+    { method: 'POST', body: form },
+  );
+  if (!res.ok) {
+    throw new Error('Cloudinary upload failed: ' + (await res.text()).slice(0, 200));
+  }
+  const data = (await res.json()) as { secure_url?: string };
+  if (!data.secure_url) throw new Error('Cloudinary: thiếu secure_url');
+  return data.secure_url;
+}
+
 /**
- * Lưu một object và trả về URL công khai.
- * - R2 cấu hình sẵn → PUT lên bucket, trả `${R2_PUBLIC_URL}/${key}`.
- * - Ngược lại → ghi xuống local disk, trả URL tuyệt đối (ưu tiên PUBLIC_BASE_URL,
- *   nếu không có thì dùng base suy ra từ request).
+ * Lưu một object và trả về URL công khai. Ưu tiên: Cloudinary → R2 → local disk.
  */
 export async function putObject(
   key: string,
@@ -45,6 +81,9 @@ export async function putObject(
   contentType: string,
   requestBaseUrl: string,
 ): Promise<string> {
+  if (isCloudinaryConfigured()) {
+    return uploadToCloudinary(key, body, contentType);
+  }
   if (isR2Configured()) {
     const client = await getR2Client();
     const { PutObjectCommand } = await import('@aws-sdk/client-s3');

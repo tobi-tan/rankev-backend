@@ -19,7 +19,11 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET_NAME: z.string().optional(),
   R2_PUBLIC_URL: z.string().optional(), // VD: https://pub-xxx.r2.dev
-  // Dùng để dựng URL tuyệt đối cho ảnh khi lưu local ở production (không có R2).
+  // Cloudinary (KHÔNG cần thẻ) — ưu tiên hơn R2 nếu đủ 3 biến này.
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+  // Dùng để dựng URL tuyệt đối cho ảnh khi lưu local ở production (không có R2/Cloudinary).
   PUBLIC_BASE_URL: z.string().optional(),
 
   // --- Đăng nhập mạng xã hội. Bỏ trống = tắt provider đó. ---
