@@ -43,6 +43,7 @@ export interface PathView {
   createdAt: string;
   revealMode: Post['revealMode'];
   hideEndingCount: boolean;
+  allowGuestPresent: boolean;
   author: PublicUser | null;
   questions: PathQuestionView[];
   endings: PathEndingView[];
@@ -103,6 +104,7 @@ export function toPathView(
     createdAt: post.createdAt.toISOString(),
     revealMode: post.revealMode,
     hideEndingCount: post.hideEndingCount,
+    allowGuestPresent: post.allowGuestPresent,
     author: author ? toPublicUser(author) : null,
     questions: qViews,
     endings: endings.map((e) => ({

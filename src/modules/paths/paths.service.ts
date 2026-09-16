@@ -43,6 +43,7 @@ export async function createPath(authorId: string, input: CreatePathInput): Prom
         media: input.media,
         revealMode: input.revealMode,
         hideEndingCount: input.hideEndingCount,
+        allowGuestPresent: input.allowGuestPresent ?? false,
       })
       .returning({ id: posts.id });
 
@@ -136,6 +137,7 @@ export async function updatePath(id: string, authorId: string, input: CreatePath
         media: input.media,
         revealMode: input.revealMode,
         hideEndingCount: input.hideEndingCount,
+        allowGuestPresent: input.allowGuestPresent ?? false,
       })
       .where(eq(posts.id, id));
 

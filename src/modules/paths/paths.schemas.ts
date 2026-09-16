@@ -37,6 +37,7 @@ export const createPathSchema = z.object({
     .optional(),
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).default('hidden'),
   hideEndingCount: z.boolean().optional().default(false),
+  allowGuestPresent: z.boolean().optional(), // cho phép người khác trình chiếu
   questions: z.array(pathQuestionSchema).min(1).max(50),
   endings: z.array(pathEndingSchema).min(1).max(50),
 });

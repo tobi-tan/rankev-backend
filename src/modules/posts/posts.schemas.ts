@@ -45,6 +45,7 @@ export const createRankieSchema = z.object({
   closesAt: z.coerce.date().optional(),
   live: z.boolean().optional().default(false),
   sponsored: z.boolean().optional().default(false),
+  allowGuestPresent: z.boolean().optional(), // cho phép người khác trình chiếu bài này
   votingType: z.enum(['single', 'multiple', 'rating', 'unlimited']).default('single'),
   chartType: z.enum(['bar', 'pie', 'head_to_head', 'tug', 'beam', 'podium']).default('bar'),
   voteMarker: voteMarkerSchema,
@@ -66,6 +67,7 @@ export const updatePostSchema = z.object({
   closesAt: z.coerce.date().nullable().optional(),
   live: z.boolean().optional(),
   sponsored: z.boolean().optional(),
+  allowGuestPresent: z.boolean().optional(), // sửa quyền cho người khác trình chiếu
   chartType: z.enum(['bar', 'pie', 'head_to_head', 'tug', 'beam', 'podium']).optional(),
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).optional(),
   hideEndingCount: z.boolean().optional(),
