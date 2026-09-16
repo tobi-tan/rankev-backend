@@ -38,6 +38,8 @@ export interface FeedSummary {
   media: unknown;
   voteMarker: unknown;
   createdAt: string;
+  opensAt: string | null;
+  notYetOpen: boolean; // đã hẹn giờ lên sóng nhưng chưa tới giờ
   closesAt: string | null;
   closed: boolean;
   live: boolean;
@@ -171,6 +173,8 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       media: p.media,
       voteMarker: p.voteMarker,
       createdAt: p.createdAt.toISOString(),
+      opensAt: p.opensAt ? p.opensAt.toISOString() : null,
+      notYetOpen: p.opensAt ? p.opensAt.getTime() > Date.now() : false,
       closesAt: p.closesAt ? p.closesAt.toISOString() : null,
       closed: p.closesAt ? p.closesAt.getTime() <= Date.now() : false,
       live: p.live,
