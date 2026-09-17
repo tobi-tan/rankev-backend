@@ -185,59 +185,67 @@ async function matchVotes(postId: string): Promise<{ a: number; b: number }> {
 }
 
 export async function getTournament(id: string, viewerId?: string) {
-  const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
+  // Vòng 1 (song song): thông tin giải + danh sách trận đều chỉ cần `id` → chạy cùng lúc.
+  const [[t], rows] = await Promise.all([
+    db.select().from(tournaments).where(eq(tournaments.id, id)),
+    db
+      .select()
+      .from(tournamentMatches)
+      .where(eq(tournamentMatches.tournamentId, id))
+      .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.position)),
+  ]);
   if (!t) throw notFound('Tournament not found');
-  const rows = await db
-    .select()
-    .from(tournamentMatches)
-    .where(eq(tournamentMatches.tournamentId, id))
-    .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.position));
 
   const postIds = rows.map((r) => r.rankiePostId).filter((x): x is string => !!x);
+
+  // Vòng 2 (song song): mọi truy vấn phụ độc lập chạy CÙNG LÚC thay vì tuần tự
+  // (trước đây ~8 round-trip nối tiếp tới Neon → chậm ~1-2s; nay còn ~2 vòng).
+  const [allOpts, closesRows, voteRows, [{ cc } = { cc: 0 }], bmRows] = await Promise.all([
+    // 1 truy vấn gộp cho TẤT CẢ options mọi ván (thay cho N truy vấn matchVotes lẻ).
+    postIds.length
+      ? db.select({ rankieId: rankieOptions.rankieId, id: rankieOptions.id, position: rankieOptions.position, votes: rankieOptions.votes })
+          .from(rankieOptions).where(inArray(rankieOptions.rankieId, postIds))
+      : Promise.resolve([] as { rankieId: string; id: string; position: number; votes: number }[]),
+    postIds.length
+      ? db.select({ id: posts.id, closesAt: posts.closesAt }).from(posts).where(inArray(posts.id, postIds))
+      : Promise.resolve([] as { id: string; closesAt: Date | null }[]),
+    viewerId && postIds.length
+      ? db.select({ rankieId: votes.rankieId, optionIds: votes.optionIds }).from(votes)
+          .where(and(eq(votes.userId, viewerId), inArray(votes.rankieId, postIds)))
+      : Promise.resolve([] as { rankieId: string; optionIds: string[] | null }[]),
+    db.select({ cc: count() }).from(comments).where(and(eq(comments.tournamentId, id), isNull(comments.deletedAt))),
+    viewerId
+      ? db.select({ userId: tournamentBookmarks.userId }).from(tournamentBookmarks)
+          .where(and(eq(tournamentBookmarks.userId, viewerId), eq(tournamentBookmarks.tournamentId, id))).limit(1)
+      : Promise.resolve([] as { userId: string }[]),
+  ]);
+
+  // voteMap (a=vị trí 0, b=vị trí 1) + posById — cùng dựng từ 1 mảng allOpts.
   const voteMap = new Map<string, { a: number; b: number }>();
-  await Promise.all(postIds.map(async (pid) => voteMap.set(pid, await matchVotes(pid))));
-
-  // Lịch mỗi trận: giờ đóng bình chọn (closesAt của rankie ván) — cho phép hẹn lịch từng trận.
-  const closesByPost = new Map<string, Date | null>();
-  if (postIds.length) {
-    const pr = await db.select({ id: posts.id, closesAt: posts.closesAt }).from(posts).where(inArray(posts.id, postIds));
-    for (const p of pr) closesByPost.set(p.id, p.closesAt);
+  const posById = new Map<string, number>();
+  const aByPost = new Map<string, number>();
+  const bByPost = new Map<string, number>();
+  for (const o of allOpts) {
+    posById.set(o.id, o.position);
+    if (o.position === 0) aByPost.set(o.rankieId, Number(o.votes));
+    else if (o.position === 1) bByPost.set(o.rankieId, Number(o.votes));
   }
+  for (const pid of postIds) voteMap.set(pid, { a: aByPost.get(pid) ?? 0, b: bByPost.get(pid) ?? 0 });
 
-  // Dự đoán của người xem trên mỗi ván ('a' | 'b') — để so với kết quả thật.
+  const closesByPost = new Map<string, Date | null>();
+  for (const p of closesRows) closesByPost.set(p.id, p.closesAt);
+
+  // Dự đoán của người xem trên mỗi ván ('a' | 'b') — dùng posById đã có, khỏi truy vấn thêm.
   const pickByPost = new Map<string, 'a' | 'b'>();
-  if (viewerId && postIds.length) {
-    const voteRows = await db
-      .select({ rankieId: votes.rankieId, optionIds: votes.optionIds })
-      .from(votes)
-      .where(and(eq(votes.userId, viewerId), inArray(votes.rankieId, postIds)));
-    const pickedOptIds = voteRows.map((v) => (v.optionIds || [])[0]).filter((x): x is string => !!x);
-    if (pickedOptIds.length) {
-      const optRows = await db
-        .select({ id: rankieOptions.id, position: rankieOptions.position })
-        .from(rankieOptions)
-        .where(inArray(rankieOptions.id, pickedOptIds));
-      const posById = new Map(optRows.map((o) => [o.id, o.position]));
-      for (const v of voteRows) {
-        const oid = (v.optionIds || [])[0];
-        const pos = oid ? posById.get(oid) : undefined;
-        if (pos === 0) pickByPost.set(v.rankieId, 'a');
-        else if (pos === 1) pickByPost.set(v.rankieId, 'b');
-      }
-    }
+  for (const v of voteRows) {
+    const oid = (v.optionIds || [])[0];
+    const pos = oid ? posById.get(oid) : undefined;
+    if (pos === 0) pickByPost.set(v.rankieId, 'a');
+    else if (pos === 1) pickByPost.set(v.rankieId, 'b');
   }
 
   const settings = (t.settings as TournamentSettings) ?? {};
-  const [{ cc } = { cc: 0 }] = await db.select({ cc: count() }).from(comments).where(and(eq(comments.tournamentId, id), isNull(comments.deletedAt)));
-  let bookmarked = false;
-  if (viewerId) {
-    const [bm] = await db
-      .select({ userId: tournamentBookmarks.userId })
-      .from(tournamentBookmarks)
-      .where(and(eq(tournamentBookmarks.userId, viewerId), eq(tournamentBookmarks.tournamentId, id)))
-      .limit(1);
-    bookmarked = !!bm;
-  }
+  const bookmarked = bmRows.length > 0;
   const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
   return {
     id: t.id,
