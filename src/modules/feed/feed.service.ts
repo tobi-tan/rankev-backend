@@ -236,7 +236,7 @@ export async function listFeed(
         AND tm.a_ref IS NOT NULL AND tm.b_ref IS NOT NULL
         AND tm.round = tt.current_round
         AND tt.status = 'active'
-        AND (${posts.opensAt} IS NULL OR ${posts.opensAt} <= now())
+        AND ${posts.opensAt} IS NOT NULL AND ${posts.opensAt} <= now()
         AND (${posts.closesAt} IS NULL OR ${posts.closesAt} > now())
     )
   )`);

@@ -297,7 +297,13 @@ export async function setMatchSchedule(
   if (!m) throw notFound('Không tìm thấy trận');
   if (!m.rankiePostId) throw badRequest('Trận chưa có sẵn để đặt lịch');
   if (sched.closesAt !== undefined) await db.update(posts).set({ closesAt: sched.closesAt }).where(eq(posts.id, m.rankiePostId));
-  if (sched.opensAt !== undefined) await db.update(tournamentMatches).set({ opensAt: sched.opensAt }).where(eq(tournamentMatches.id, m.id));
+  if (sched.opensAt !== undefined) {
+    // Đồng bộ opensAt lên CẢ tournamentMatches (bảng nhánh) LẪN posts (để feed + chi tiết ván
+    // chặn/mở bình chọn nhất quán). opensAt = null nghĩa là "chưa lên sóng" → không hiện ở feed,
+    // không vote được (trận vòng 1 mặc định null = chưa auto-live; chủ giải bấm Lên sóng để mở).
+    await db.update(tournamentMatches).set({ opensAt: sched.opensAt }).where(eq(tournamentMatches.id, m.id));
+    await db.update(posts).set({ opensAt: sched.opensAt }).where(eq(posts.id, m.rankiePostId));
+  }
   return getTournament(id, viewerId);
 }
 
