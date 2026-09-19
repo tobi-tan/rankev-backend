@@ -11,6 +11,8 @@ import {
   comments,
   series,
   seriesPosts,
+  tournamentMatches,
+  tournaments,
   type Post,
   type User,
 } from '../../db/schema';
@@ -48,6 +50,9 @@ export interface FeedSummary {
   questionCount: number;
   seriesId: string | null;
   seriesName: string | null;
+  /** Nếu bài này là 1 TRẬN của giải đấu đang live (hiện trên feed) → id/tên giải để gắn nhãn. */
+  tournamentId: string | null;
+  tournamentTitle: string | null;
   author: PublicUser | null;
   /** rankie=total votes, path/deck=participants */
   engagement: number;
@@ -151,6 +156,18 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
     : [];
   const seriesBy = new Map(seriesRows.map((r) => [r.postId, { seriesId: r.seriesId, seriesName: r.name }]));
 
+  // Bài nào là TRẬN của giải đấu → gắn giải (để feed hiện nhãn "🏆 Giải", và KHÔNG coi là series).
+  const matchRows = allIds.length
+    ? await db
+        .select({ postId: tournamentMatches.rankiePostId, tournamentId: tournaments.id, title: tournaments.title })
+        .from(tournamentMatches)
+        .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
+        .where(inArray(tournamentMatches.rankiePostId, allIds))
+    : [];
+  const matchBy = new Map(
+    matchRows.filter((r): r is { postId: string; tournamentId: string; title: string } => !!r.postId).map((r) => [r.postId, { tournamentId: r.tournamentId, tournamentTitle: r.title }]),
+  );
+
   return rows.map((r) => {
     const p = r.post;
     const agg = rankieAgg.get(p.id);
@@ -180,8 +197,11 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       live: p.live,
       votingType: p.votingType,
       questionCount: p.type === 'deck' ? (qsBy.get(p.id) ?? 0) : p.type === 'path' ? (pathQsBy.get(p.id) ?? 0) : 0,
-      seriesId: seriesBy.get(p.id)?.seriesId ?? null,
-      seriesName: seriesBy.get(p.id)?.seriesName ?? null,
+      // Trận giải đấu: KHÔNG hiện như series (dùng nhãn giải thay thế) để tránh nhầm "Series".
+      seriesId: matchBy.has(p.id) ? null : (seriesBy.get(p.id)?.seriesId ?? null),
+      seriesName: matchBy.has(p.id) ? null : (seriesBy.get(p.id)?.seriesName ?? null),
+      tournamentId: matchBy.get(p.id)?.tournamentId ?? null,
+      tournamentTitle: matchBy.get(p.id)?.tournamentTitle ?? null,
       author: r.author ? toPublicUser(r.author) : null,
       engagement,
       size,
@@ -203,9 +223,23 @@ export async function listFeed(
     // Khớp không phân biệt dấu tiếng Việt (#âmnhạc = #amnhac).
     if (t) conditions.push(sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE unaccent(lower(tg)) = unaccent(${t}))`);
   }
-  // Ẩn các bài-ván của giải đấu khỏi feed chính — giải đấu hiện dưới dạng MỘT thẻ giải
-  // riêng (các ván xem trong bảng phân nhánh), tránh feed bị ngập bởi từng ván lẻ.
-  conditions.push(sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`);
+  // Ẩn các bài-ván của giải đấu khỏi feed — TRỪ trận ĐANG DIỄN RA (vòng hiện tại, đủ 2 đối
+  // thủ, chưa có kết quả, đang mở bình chọn): trận live nổi lên feed để người xem thấy & vote
+  // thẳng. Các trận miễn đấu / chưa tới giờ / đã đóng / vòng sau vẫn ẩn (tránh ngập feed).
+  conditions.push(sql`(
+    NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})
+    OR EXISTS (
+      SELECT 1 FROM tournament_matches tm
+      JOIN tournaments tt ON tt.id = tm.tournament_id
+      WHERE tm.rankie_post_id = ${posts.id}
+        AND tm.winner_ref IS NULL
+        AND tm.a_ref IS NOT NULL AND tm.b_ref IS NOT NULL
+        AND tm.round = tt.current_round
+        AND tt.status = 'active'
+        AND (${posts.opensAt} IS NULL OR ${posts.opensAt} <= now())
+        AND (${posts.closesAt} IS NULL OR ${posts.closesAt} > now())
+    )
+  )`);
   if (viewerId) {
     const blocked = await getBlockedIds(viewerId);
     if (blocked.length) conditions.push(notInArray(posts.authorId, blocked));
