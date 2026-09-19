@@ -86,7 +86,7 @@ export const posts = pgTable(
     votingType: text('voting_type', {
       enum: ['single', 'multiple', 'rating', 'unlimited'],
     }),
-    chartType: text('chart_type', { enum: ['bar', 'pie', 'head_to_head', 'tug', 'beam', 'podium'] }),
+    chartType: text('chart_type', { enum: ['bar', 'pie', 'head_to_head', 'hh_classic', 'tug', 'beam', 'podium'] }),
     revealMode: text('reveal_mode', {
       enum: ['all', 'names', 'stats', 'hidden'],
     }).default('hidden'),

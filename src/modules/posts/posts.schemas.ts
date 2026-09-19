@@ -47,7 +47,7 @@ export const createRankieSchema = z.object({
   sponsored: z.boolean().optional().default(false),
   allowGuestPresent: z.boolean().optional(), // cho phép người khác trình chiếu bài này
   votingType: z.enum(['single', 'multiple', 'rating', 'unlimited']).default('single'),
-  chartType: z.enum(['bar', 'pie', 'head_to_head', 'tug', 'beam', 'podium']).default('bar'),
+  chartType: z.enum(['bar', 'pie', 'head_to_head', 'hh_classic', 'tug', 'beam', 'podium']).default('bar'),
   voteMarker: voteMarkerSchema,
   options: z.array(optionSchema).min(2, 'A Rankie needs at least 2 options').max(50),
 });
@@ -68,7 +68,7 @@ export const updatePostSchema = z.object({
   live: z.boolean().optional(),
   sponsored: z.boolean().optional(),
   allowGuestPresent: z.boolean().optional(), // sửa quyền cho người khác trình chiếu
-  chartType: z.enum(['bar', 'pie', 'head_to_head', 'tug', 'beam', 'podium']).optional(),
+  chartType: z.enum(['bar', 'pie', 'head_to_head', 'hh_classic', 'tug', 'beam', 'podium']).optional(),
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).optional(),
   hideEndingCount: z.boolean().optional(),
   // Rankie options — FULL replacement when provided. Có `id` = sửa (giữ phiếu),
