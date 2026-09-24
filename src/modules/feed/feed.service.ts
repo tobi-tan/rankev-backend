@@ -226,23 +226,10 @@ export async function listFeed(
     // Khớp không phân biệt dấu tiếng Việt (#âmnhạc = #amnhac).
     if (t) conditions.push(sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE unaccent(lower(tg)) = unaccent(${t}))`);
   }
-  // Ẩn các bài-ván của giải đấu khỏi feed — TRỪ trận ĐANG DIỄN RA (vòng hiện tại, đủ 2 đối
-  // thủ, chưa có kết quả, đang mở bình chọn): trận live nổi lên feed để người xem thấy & vote
-  // thẳng. Các trận miễn đấu / chưa tới giờ / đã đóng / vòng sau vẫn ẩn (tránh ngập feed).
-  conditions.push(sql`(
-    NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})
-    OR EXISTS (
-      SELECT 1 FROM tournament_matches tm
-      JOIN tournaments tt ON tt.id = tm.tournament_id
-      WHERE tm.rankie_post_id = ${posts.id}
-        AND tm.winner_ref IS NULL
-        AND tm.a_ref IS NOT NULL AND tm.b_ref IS NOT NULL
-        AND tm.round = tt.current_round
-        AND tt.status = 'active'
-        AND ${posts.opensAt} IS NOT NULL AND ${posts.opensAt} <= now()
-        AND (${posts.closesAt} IS NULL OR ${posts.closesAt} > now())
-    )
-  )`);
+  // Ẩn MỌI bài-ván của giải đấu khỏi feed chính: giải đấu nay hiện dưới dạng MỘT carousel
+  // (bảng đấu + các trận live/đã kết thúc), các trận theo dõi ngay trong carousel đó — không
+  // để lẻ ra feed nữa (tránh ngập + để "series giải đấu" gom gọn một chỗ).
+  conditions.push(sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`);
   if (viewerId) {
     const blocked = await getBlockedIds(viewerId);
     if (blocked.length) conditions.push(notInArray(posts.authorId, blocked));
