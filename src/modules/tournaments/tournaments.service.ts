@@ -401,6 +401,17 @@ export async function advanceRound(id: string, viewerId: string) {
     const missing = cur.some((m) => m.rankiePostId && !m.winnerRef);
     if (missing) throw badRequest('Hãy nhập kết quả thật cho tất cả các trận trước khi chốt vòng');
   }
+  // Giải bình chọn: trận HOÀ (bằng phiếu, kể cả 0:0) KHÔNG tự chốt bên nào — chủ giải phải
+  // chọn bên đi tiếp (hoặc gia hạn thời gian) trước, tránh đẩy đại một bên khi hoà.
+  if (mode === 'vote') {
+    let ties = 0;
+    for (const m of cur) {
+      if (m.winnerRef || !m.rankiePostId || !m.aRef || !m.bRef) continue;
+      const v = await matchVotes(m.rankiePostId);
+      if (v.a === v.b) ties += 1;
+    }
+    if (ties) throw badRequest(`Có ${ties} trận HOÀ — hãy chọn bên đi tiếp hoặc gia hạn thời gian trước khi chốt vòng`);
+  }
 
   await db.transaction(async (tx) => {
     // 1) quyết định thắng cho các ván vòng r (byes đã có winnerRef sẵn).
