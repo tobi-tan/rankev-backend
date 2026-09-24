@@ -46,6 +46,8 @@ export interface FeedSummary {
   closed: boolean;
   live: boolean;
   votingType: 'single' | 'multiple' | 'rating' | 'unlimited' | null;
+  /** skin biểu đồ người tạo đã chọn (rankie) — feed/chi tiết hiển thị đúng kiểu này. */
+  chartType: string | null;
   /** số câu hỏi (deck & path); rankie = 0. Khác `size` vì path.size = số kết thúc. */
   questionCount: number;
   seriesId: string | null;
@@ -196,6 +198,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       closed: p.closesAt ? p.closesAt.getTime() <= Date.now() : false,
       live: p.live,
       votingType: p.votingType,
+      chartType: p.chartType ?? null,
       questionCount: p.type === 'deck' ? (qsBy.get(p.id) ?? 0) : p.type === 'path' ? (pathQsBy.get(p.id) ?? 0) : 0,
       // Trận giải đấu: KHÔNG hiện như series (dùng nhãn giải thay thế) để tránh nhầm "Series".
       seriesId: matchBy.has(p.id) ? null : (seriesBy.get(p.id)?.seriesId ?? null),
