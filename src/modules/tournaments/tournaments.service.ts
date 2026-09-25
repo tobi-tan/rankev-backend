@@ -375,7 +375,24 @@ export async function setMatchResult(id: string, viewerId: string, round: number
   if (!m) throw notFound('Không tìm thấy trận');
   const winnerRef = (winner === 'a' ? m.aRef : m.bRef) as Contestant | null;
   if (!winnerRef) throw badRequest('Trận chưa đủ 2 đối thủ');
-  await db.update(tournamentMatches).set({ winnerRef }).where(eq(tournamentMatches.id, m.id));
+  await db.transaction(async (tx) => {
+    await tx.update(tournamentMatches).set({ winnerRef }).where(eq(tournamentMatches.id, m.id));
+    // #6: đã có người thắng → ĐÓNG ván (chapter) để không còn "live" mâu thuẫn với kết quả.
+    if (m.rankiePostId) await tx.update(posts).set({ closesAt: new Date(), live: false }).where(eq(posts.id, m.rankiePostId));
+    // #7: điền tên đội thắng sang ô vòng sau NGAY (chưa tạo ván — chủ giải mở sau ở bước đệm).
+    const allRows = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, id));
+    const maxRound = allRows.reduce((mx, x) => Math.max(mx, x.round), 0);
+    if (round < maxRound) {
+      const next = allRows.find((x) => x.round === round + 1 && x.position === Math.floor(position / 2));
+      if (next) {
+        const patch = position % 2 === 0 ? { aRef: winnerRef } : { bRef: winnerRef };
+        await tx.update(tournamentMatches).set(patch as never).where(eq(tournamentMatches.id, next.id));
+      }
+    } else {
+      // Trận CHUNG KẾT: chọn người thắng = nhà vô địch.
+      await tx.update(tournaments).set({ championRef: winnerRef, status: 'done' }).where(eq(tournaments.id, id));
+    }
+  });
   return getTournament(id, viewerId);
 }
 
@@ -423,6 +440,8 @@ export async function advanceRound(id: string, viewerId: string) {
         const winner = (v.a >= v.b ? m.aRef : m.bRef) as Contestant | null;
         m.winnerRef = winner;
         await tx.update(tournamentMatches).set({ winnerRef: winner }).where(eq(tournamentMatches.id, m.id));
+        // #6: đóng ván khi đã chốt người thắng → chapter hết "live".
+        await tx.update(posts).set({ closesAt: new Date(), live: false }).where(eq(posts.id, m.rankiePostId));
       }
     }
 
