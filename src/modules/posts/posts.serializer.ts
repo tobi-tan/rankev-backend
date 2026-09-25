@@ -40,6 +40,8 @@ export interface RankieView {
   seriesName?: string | null;
   tournamentId?: string | null;
   tournamentTitle?: string | null;
+  /** Ván giải đấu: bên đi tiếp ('a'=lựa chọn vị trí 0, 'b'=vị trí 1) — kể cả khi hoà mà chủ giải chọn. */
+  tournamentWinner?: 'a' | 'b' | null;
   author: PublicUser | null;
   options: RankieOptionView[];
   totalVotes: number;

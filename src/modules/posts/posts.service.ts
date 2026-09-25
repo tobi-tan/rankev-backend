@@ -97,17 +97,20 @@ export async function getRankieById(id: string, viewerId?: string): Promise<Rank
   const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
   // Nếu rankie này là một VÁN của giải đấu → đính kèm id/tên giải để web cho quay lại thẻ đấu.
   const [tm] = await db
-    .select({ tournamentId: tournamentMatches.tournamentId, title: tournaments.title })
+    .select({ tournamentId: tournamentMatches.tournamentId, title: tournaments.title, aRef: tournamentMatches.aRef, winnerRef: tournamentMatches.winnerRef })
     .from(tournamentMatches)
     .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
     .where(eq(tournamentMatches.rankiePostId, id))
     .limit(1);
+  const wName = (tm?.winnerRef as { name?: string } | null)?.name;
+  const aName = (tm?.aRef as { name?: string } | null)?.name;
   return {
     ...view,
     seriesId: s?.seriesId ?? null,
     seriesName: s?.seriesName ?? null,
     tournamentId: tm?.tournamentId ?? null,
     tournamentTitle: tm?.title ?? null,
+    tournamentWinner: wName ? (wName === aName ? 'a' : 'b') : null,
   };
 }
 
