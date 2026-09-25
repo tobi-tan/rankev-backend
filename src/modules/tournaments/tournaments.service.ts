@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, max } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   tournaments,
@@ -185,7 +185,184 @@ async function matchVotes(postId: string): Promise<{ a: number; b: number }> {
   return { a, b };
 }
 
+// ---------------------------------------------------------------------------------------------
+// TỰ ĐỐI SOÁT BẢNG ĐẤU (settle) — chạy mỗi lần đọc giải, CHỈ ghi DB khi có thay đổi:
+//  1) Chế độ vote: trận ĐÃ ĐÓNG + phiếu không hoà → người thắng = bên NHIỀU PHIẾU (sửa luôn
+//     winner sai cũ, vd 1:0 mà bên 0 thắng). Trận CÒN LIVE mà đã có winner (bị mở lại) → xoá.
+//     Hoà khi đã đóng → giữ lựa chọn của chủ giải (hoặc chờ chủ giải chọn).
+//  2) Miễn đấu theo cấu trúc: 1 bên có người, nhánh bên kia "chết" (không bao giờ có ai).
+//  3) Điền tên người thắng sang ô vòng sau NGAY; đủ 2 bên mà chưa có ván → tạo ván (chưa lên sóng).
+//  4) Cập nhật vòng hiện tại + nhà vô địch theo trạng thái thật của bảng.
+// Nhờ vậy không cần bấm "Kết thúc vòng" mới thấy người thắng đi tiếp.
+// ---------------------------------------------------------------------------------------------
+type TRow = TournamentMatch;
+interface SettlePlan {
+  rows: TRow[]; // các trận đổi aRef/bRef/winnerRef
+  closePosts: string[]; // ván vừa có người thắng → tắt live
+  optUpdates: { postId: string; pos: number; ref: Contestant }[]; // ván đã có bài mà đổi đấu thủ
+  retitle: { postId: string; title: string }[];
+  createFor: { id: string; a: Contestant; b: Contestant }[]; // đủ 2 bên nhưng chưa có ván
+  t: { currentRound: number; championRef: Contestant | null; status: string } | null;
+}
+
+export function planSettle(
+  t: typeof tournaments.$inferSelect,
+  rowsIn: TRow[],
+  voteMap: Map<string, { a: number; b: number }>,
+  closesByPost: Map<string, Date | null>,
+): SettlePlan | null {
+  if (!rowsIn.length) return null;
+  const mode = ((t.settings as TournamentSettings) ?? {}).advanceMode ?? 'vote';
+  const rows = rowsIn.map((r) => ({ ...r }));
+  const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
+  const at = new Map(rows.map((r) => [`${r.round}-${r.position}`, r]));
+  const get = (r: number, p: number) => at.get(`${r}-${p}`);
+  const now = Date.now();
+  const same = (x: unknown, y: unknown) => ((x as Contestant | null)?.name ?? null) === ((y as Contestant | null)?.name ?? null);
+  // Nhánh "chết": vòng 0 không ai (phantom), vòng sau = cả 2 nhánh con đều chết.
+  const deadMemo = new Map<string, boolean>();
+  const isDead = (r: number, p: number): boolean => {
+    const k = `${r}-${p}`;
+    const hit = deadMemo.get(k);
+    if (hit !== undefined) return hit;
+    let v: boolean;
+    if (r === 0) { const m = get(0, p); v = !m || (!m.aRef && !m.bRef && !m.winnerRef); }
+    else v = isDead(r - 1, 2 * p) && isDead(r - 1, 2 * p + 1);
+    deadMemo.set(k, v);
+    return v;
+  };
+
+  const touched = new Set<string>();
+  const changedWinner = new Set<string>();
+  const closePosts = new Set<string>();
+  const optUpdates: SettlePlan['optUpdates'] = [];
+  const retitleIds = new Set<string>();
+  for (let r = 0; r <= maxRound; r++) {
+    const round = rows.filter((x) => x.round === r).sort((x, y) => x.position - y.position);
+    for (const m of round) {
+      const a = m.aRef as Contestant | null;
+      const b = m.bRef as Contestant | null;
+      if (a && b) {
+        if (m.rankiePostId && mode === 'vote') {
+          const ca = closesByPost.get(m.rankiePostId);
+          const closed = !!ca && ca.getTime() <= now;
+          const v = voteMap.get(m.rankiePostId) ?? { a: 0, b: 0 };
+          if (!closed) {
+            if (m.winnerRef) { m.winnerRef = null; touched.add(m.id); changedWinner.add(m.id); }
+          } else if (v.a !== v.b) {
+            const lead = v.a > v.b ? a : b;
+            if (!same(m.winnerRef, lead)) { m.winnerRef = lead; touched.add(m.id); changedWinner.add(m.id); closePosts.add(m.rankiePostId); }
+          }
+        }
+      } else if (a || b) {
+        const emptyFeederDead = r === 0 || isDead(r - 1, a ? 2 * m.position + 1 : 2 * m.position);
+        const present = (a ?? b) as Contestant;
+        if (emptyFeederDead && !same(m.winnerRef, present)) { m.winnerRef = present; touched.add(m.id); changedWinner.add(m.id); }
+      }
+      if (r < maxRound) {
+        const nm = get(r + 1, Math.floor(m.position / 2));
+        if (nm) {
+          const key = m.position % 2 === 0 ? 'aRef' : 'bRef';
+          const cur = nm[key] as Contestant | null;
+          const w = m.winnerRef as Contestant | null;
+          if (w && (!cur || (changedWinner.has(m.id) && !same(cur, w)))) {
+            nm[key] = w; touched.add(nm.id);
+            if (nm.rankiePostId) { optUpdates.push({ postId: nm.rankiePostId, pos: key === 'aRef' ? 0 : 1, ref: w }); retitleIds.add(nm.id); }
+          } else if (!w && changedWinner.has(m.id) && cur && !nm.rankiePostId) {
+            nm[key] = null; touched.add(nm.id); // winner cũ bị huỷ → gỡ khỏi ô vòng sau (chưa có ván)
+          }
+        }
+      }
+    }
+  }
+
+  const retitle = rows
+    .filter((m) => retitleIds.has(m.id) && m.rankiePostId && m.aRef && m.bRef)
+    .map((m) => ({ postId: m.rankiePostId as string, title: `${(m.aRef as Contestant).name} vs ${(m.bRef as Contestant).name}` }));
+  const createFor = rows
+    .filter((m) => m.aRef && m.bRef && !m.rankiePostId && !m.winnerRef)
+    .map((m) => ({ id: m.id, a: m.aRef as Contestant, b: m.bRef as Contestant }));
+
+  // Vòng hiện tại = vòng sớm nhất còn trận chưa có kết quả (bỏ qua nhánh chết).
+  let curRound = maxRound;
+  outer: for (let r = 0; r <= maxRound; r++) {
+    for (const m of rows) if (m.round === r && !m.winnerRef && !isDead(r, m.position)) { curRound = r; break outer; }
+  }
+  const champ = (get(maxRound, 0)?.winnerRef as Contestant | null) ?? null;
+  const status = champ ? 'done' : 'active';
+  const tChanged = curRound !== t.currentRound || !same(champ, t.championRef) || status !== t.status;
+
+  if (!touched.size && !closePosts.size && !createFor.length && !tChanged) return null;
+  return {
+    rows: rows.filter((r) => touched.has(r.id)),
+    closePosts: [...closePosts],
+    optUpdates,
+    retitle,
+    createFor,
+    t: tChanged ? { currentRound: curRound, championRef: champ, status } : null,
+  };
+}
+
+async function applySettle(id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    // Khoá theo giải: nhiều người cùng xem (poll 4s) không tạo trùng ván / ghi chồng.
+    const lock = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(hashtext(${id})) AS ok`);
+    if (!(lock.rows?.[0] as { ok?: boolean } | undefined)?.ok) return;
+    const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, id));
+    if (!t) return;
+    const rows = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, id));
+    const postIds = rows.map((r) => r.rankiePostId).filter((x): x is string => !!x);
+    const opts = postIds.length
+      ? await tx.select({ rankieId: rankieOptions.rankieId, position: rankieOptions.position, votes: rankieOptions.votes }).from(rankieOptions).where(inArray(rankieOptions.rankieId, postIds))
+      : [];
+    const cls = postIds.length ? await tx.select({ id: posts.id, closesAt: posts.closesAt }).from(posts).where(inArray(posts.id, postIds)) : [];
+    const voteMap = new Map<string, { a: number; b: number }>();
+    for (const pid of postIds) voteMap.set(pid, { a: 0, b: 0 });
+    for (const o of opts) { const v = voteMap.get(o.rankieId)!; if (o.position === 0) v.a = Number(o.votes); else if (o.position === 1) v.b = Number(o.votes); }
+    const closesByPost = new Map(cls.map((p) => [p.id, p.closesAt]));
+
+    const plan = planSettle(t, rows, voteMap, closesByPost);
+    if (!plan) return;
+    for (const r of plan.rows) {
+      await tx.update(tournamentMatches).set({ aRef: r.aRef, bRef: r.bRef, winnerRef: r.winnerRef }).where(eq(tournamentMatches.id, r.id));
+    }
+    if (plan.closePosts.length) await tx.update(posts).set({ live: false }).where(inArray(posts.id, plan.closePosts));
+    for (const u of plan.optUpdates) {
+      await tx
+        .update(rankieOptions)
+        .set({ label: u.ref.name, imageUrl: u.ref.imageUrl ?? null, emoji: u.ref.emoji ?? null, color: u.ref.color ?? undefined })
+        .where(and(eq(rankieOptions.rankieId, u.postId), eq(rankieOptions.position, u.pos)));
+    }
+    for (const rt of plan.retitle) await tx.update(posts).set({ title: rt.title }).where(eq(posts.id, rt.postId));
+    if (plan.createFor.length) {
+      const settings = (t.settings as TournamentSettings) ?? {};
+      // Ván sinh tự động CHƯA lên sóng: không đặt hạn (closesInHours=null) — chủ giải đặt thời
+      // lượng + lên sóng ở bước đệm.
+      const meta: MatchMeta = { ...settings, category: t.category, closesInHours: null };
+      let seriesPos = 0;
+      if (settings.seriesId) {
+        const [row] = await tx.select({ m: max(seriesPosts.position) }).from(seriesPosts).where(eq(seriesPosts.seriesId, settings.seriesId));
+        seriesPos = (row?.m ?? -1) + 1;
+      }
+      for (const c of plan.createFor) {
+        const pid = await createMatchRankie(tx as unknown as typeof db, t.authorId, c.a, c.b, meta);
+        if (settings.seriesId) await tx.insert(seriesPosts).values({ seriesId: settings.seriesId, postId: pid, position: seriesPos++ });
+        await tx.update(tournamentMatches).set({ rankiePostId: pid }).where(eq(tournamentMatches.id, c.id));
+      }
+    }
+    if (plan.t) await tx.update(tournaments).set(plan.t).where(eq(tournaments.id, id));
+  });
+}
+
+// Đọc giải; nếu bảng cần đối soát → đối soát (khoá) rồi đọc lại. Trạng thái ổn định = 0 truy vấn thêm.
 export async function getTournament(id: string, viewerId?: string) {
+  const first = await readTournament(id, viewerId);
+  if (!first.needsSettle) return first.view;
+  await applySettle(id);
+  return (await readTournament(id, viewerId)).view;
+}
+
+async function readTournament(id: string, viewerId?: string) {
   // Vòng 1 (song song): thông tin giải + danh sách trận đều chỉ cần `id` → chạy cùng lúc.
   const [[t], rows] = await Promise.all([
     db.select().from(tournaments).where(eq(tournaments.id, id)),
@@ -249,7 +426,8 @@ export async function getTournament(id: string, viewerId?: string) {
   const settings = (t.settings as TournamentSettings) ?? {};
   const bookmarked = bmRows.length > 0;
   const maxRound = rows.reduce((m, r) => Math.max(m, r.round), 0);
-  return {
+  const needsSettle = !!planSettle(t, rows, voteMap, closesByPost);
+  const view = {
     id: t.id,
     authorId: t.authorId,
     title: t.title,
@@ -280,6 +458,7 @@ export async function getTournament(id: string, viewerId?: string) {
       caption: r.rankiePostId ? (postMetaById.get(r.rankiePostId)?.caption ?? null) : null, // #13
     })),
   };
+  return { view, needsSettle };
 }
 
 // Chủ giải hẹn lịch một trận: giờ MỞ (opensAt trên match) + giờ ĐÓNG (closesAt trên
@@ -300,6 +479,9 @@ export async function setMatchSchedule(
     .where(and(eq(tournamentMatches.tournamentId, id), eq(tournamentMatches.round, round), eq(tournamentMatches.position, position)));
   if (!m) throw notFound('Không tìm thấy trận');
   if (!m.rankiePostId) throw badRequest('Trận chưa có sẵn để đặt lịch');
+  // Trận đã có người thắng thì KHÔNG mở lại (lên sóng/hẹn giờ/gia hạn) — tránh cảnh đã chốt
+  // bên thắng rồi vẫn cho vote tiếp, ra kết quả ngược (vd 1:0 mà bên 0 thắng).
+  if (m.winnerRef) throw badRequest('Trận đã có kết quả — không thể lên sóng lại');
   if (sched.closesAt !== undefined) await db.update(posts).set({ closesAt: sched.closesAt }).where(eq(posts.id, m.rankiePostId));
   if (sched.opensAt !== undefined) {
     // Đồng bộ opensAt lên CẢ tournamentMatches (bảng nhánh) LẪN posts (để feed + chi tiết ván
