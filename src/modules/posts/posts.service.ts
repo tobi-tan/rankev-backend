@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { bookmarks, posts, rankieOptions, users, votes, tournaments, tournamentMatches, type RankieOption } from '../../db/schema';
 import { forbidden, notFound } from '../../lib/errors';
@@ -127,7 +127,7 @@ export async function listRankies(
   query: ListPostsQuery,
   viewerId?: string,
 ): Promise<{ items: RankieView[]; nextCursor: string | null }> {
-  const conditions = [eq(posts.type, query.type)];
+  const conditions = [eq(posts.type, query.type), isNull(posts.deletedAt)];
   if (query.category) conditions.push(eq(posts.category, query.category));
 
   // Hide posts authored by users this viewer has blocked.
@@ -293,10 +293,26 @@ export async function updatePost(
   return post.type;
 }
 
+// Xoá MỀM (vào thùng rác): giấu khỏi feed/hồ sơ công khai, vẫn khôi phục được.
 export async function deletePost(id: string, userId: string): Promise<void> {
   const [post] = await db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, id));
   if (!post) throw notFound('Post not found');
   if (post.authorId !== userId) throw forbidden('Only the author can delete this post');
-  // rankie_options / votes / comments / bookmarks cascade via FK ON DELETE CASCADE.
+  await db.update(posts).set({ deletedAt: new Date() }).where(eq(posts.id, id));
+}
+
+// Khôi phục bài từ thùng rác.
+export async function restorePost(id: string, userId: string): Promise<void> {
+  const [post] = await db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, id));
+  if (!post) throw notFound('Post not found');
+  if (post.authorId !== userId) throw forbidden('Only the author can restore this post');
+  await db.update(posts).set({ deletedAt: null }).where(eq(posts.id, id));
+}
+
+// Xoá VĨNH VIỄN: xoá thật (rankie_options / votes / comments / bookmarks cascade FK).
+export async function purgePost(id: string, userId: string): Promise<void> {
+  const [post] = await db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, id));
+  if (!post) throw notFound('Post not found');
+  if (post.authorId !== userId) throw forbidden('Only the author can delete this post');
   await db.delete(posts).where(eq(posts.id, id));
 }

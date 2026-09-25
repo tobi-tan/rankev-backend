@@ -65,9 +65,21 @@ export default async function postsRoutes(app: FastifyInstance): Promise<void> {
     return postsService.getRankieById(id, userId);
   });
 
-  // DELETE /posts/:id — author only
+  // DELETE /posts/:id — author only. XOÁ MỀM (vào thùng rác, khôi phục được).
   app.delete<{ Params: { id: string } }>('/:id', { preHandler: authenticate }, async (req, reply) => {
     await postsService.deletePost(req.params.id, requireUserId(req));
+    return reply.code(204).send();
+  });
+
+  // POST /posts/:id/restore — author only. Khôi phục bài từ thùng rác.
+  app.post<{ Params: { id: string } }>('/:id/restore', { preHandler: authenticate }, async (req, reply) => {
+    await postsService.restorePost(req.params.id, requireUserId(req));
+    return reply.code(204).send();
+  });
+
+  // DELETE /posts/:id/purge — author only. XOÁ VĨNH VIỄN (không khôi phục được).
+  app.delete<{ Params: { id: string } }>('/:id/purge', { preHandler: authenticate }, async (req, reply) => {
+    await postsService.purgePost(req.params.id, requireUserId(req));
     return reply.code(204).send();
   });
 }

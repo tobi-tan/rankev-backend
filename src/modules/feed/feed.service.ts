@@ -40,6 +40,7 @@ export interface FeedSummary {
   media: unknown;
   voteMarker: unknown;
   createdAt: string;
+  deletedAt: string | null; // != null = đang ở thùng rác (chỉ trả về ở danh sách bài của mình)
   opensAt: string | null;
   notYetOpen: boolean; // đã hẹn giờ lên sóng nhưng chưa tới giờ
   closesAt: string | null;
@@ -192,6 +193,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       media: p.media,
       voteMarker: p.voteMarker,
       createdAt: p.createdAt.toISOString(),
+      deletedAt: p.deletedAt ? p.deletedAt.toISOString() : null,
       opensAt: p.opensAt ? p.opensAt.toISOString() : null,
       notYetOpen: p.opensAt ? p.opensAt.getTime() > Date.now() : false,
       closesAt: p.closesAt ? p.closesAt.toISOString() : null,
@@ -219,6 +221,7 @@ export async function listFeed(
   viewerId?: string,
 ): Promise<{ items: FeedSummary[]; nextCursor: string | null }> {
   const conditions = [] as any[];
+  conditions.push(isNull(posts.deletedAt)); // ẩn bài đã xoá mềm (thùng rác) khỏi feed
   if (query.type) conditions.push(eq(posts.type, query.type));
   // Lọc theo hashtag: tag khớp không phân biệt hoa thường với một phần tử trong mảng tags.
   if (query.tag) {

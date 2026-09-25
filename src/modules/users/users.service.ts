@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, posts, participations } from '../../db/schema';
 import { conflict, notFound } from '../../lib/errors';
@@ -55,18 +55,20 @@ export async function resolveHandles(handles: string[]): Promise<Map<string, str
 }
 
 /** A user's own posts (any type) as feed summaries, newest first. */
-export async function getUserPosts(authorId: string): Promise<FeedSummary[]> {
+// includeDeleted: chỉ bật cho CHỦ tài khoản (/users/me/posts) để có bài trong "Thùng rác";
+// hồ sơ công khai (/users/:id/posts) luôn ẩn bài đã xoá mềm.
+export async function getUserPosts(authorId: string, includeDeleted = false): Promise<FeedSummary[]> {
+  const conds = [
+    eq(posts.authorId, authorId),
+    // Ẩn các bài-ván của giải đấu — giải hiện dưới dạng series/thẻ giải, không phải
+    // từng ván lẻ trong lưới hồ sơ (đồng bộ với feed).
+    sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`,
+  ];
+  if (!includeDeleted) conds.push(isNull(posts.deletedAt));
   const rows = await db
     .select({ id: posts.id })
     .from(posts)
-    .where(
-      and(
-        eq(posts.authorId, authorId),
-        // Ẩn các bài-ván của giải đấu — giải hiện dưới dạng series/thẻ giải, không phải
-        // từng ván lẻ trong lưới hồ sơ (đồng bộ với feed).
-        sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`,
-      ),
-    )
+    .where(and(...conds))
     .orderBy(desc(posts.createdAt), desc(posts.id))
     .limit(100);
   return summariesByIds(rows.map((r) => r.id));

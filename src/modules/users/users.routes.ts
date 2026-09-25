@@ -33,9 +33,9 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
-  // GET /users/me/posts — own posts
+  // GET /users/me/posts — own posts (kèm bài trong THÙNG RÁC để hồ sơ tự tách tab)
   app.get('/me/posts', { preHandler: authenticate }, async (req) => {
-    const items = await usersService.getUserPosts(requireUserId(req));
+    const items = await usersService.getUserPosts(requireUserId(req), true);
     return { items };
   });
 
