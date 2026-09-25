@@ -5,6 +5,7 @@ const contestantSchema = z.object({
   emoji: z.string().max(16).optional(),
   color: z.string().max(32).optional(),
   imageUrl: z.string().url().optional(),
+  desc: z.string().max(500).optional(), // #14 — mô tả đấu thủ
   refType: z.enum(['post', 'user', 'comment']).optional(),
   refId: z.string().max(64).optional(),
 });
@@ -43,8 +44,17 @@ const matchContestantPatchSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
   emoji: z.string().max(16).nullable().optional(),
   color: z.string().max(32).nullable().optional(),
+  desc: z.string().max(500).nullable().optional(), // #14
 });
 export const customizeMatchSchema = z.object({
   a: matchContestantPatchSchema.optional(),
   b: matchContestantPatchSchema.optional(),
+  title: z.string().max(200).nullable().optional(), // #13 — tiêu đề trận (tuỳ chọn)
+  caption: z.string().max(2000).nullable().optional(), // #13 — mô tả trận (tuỳ chọn)
+});
+
+// #14 — đặt mô tả cho một đấu thủ (theo tên), áp dụng toàn giải.
+export const setContestantDescSchema = z.object({
+  name: z.string().min(1).max(80),
+  desc: z.string().max(500).nullable().optional(),
 });

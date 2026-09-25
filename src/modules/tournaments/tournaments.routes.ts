@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
-import { createTournamentSchema, customizeMatchSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
+import { createTournamentSchema, customizeMatchSchema, setContestantDescSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
 import * as tournaments from './tournaments.service';
 import { createCommentSchema, listCommentsQuerySchema } from '../comments/comments.schemas';
 import * as commentsSvc from '../comments/comments.service';
@@ -57,6 +57,12 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
       return tournaments.customizeMatch(req.params.id, requireUserId(req), Number(req.params.round), Number(req.params.position), body);
     },
   );
+
+  // POST /tournaments/:id/contestant-desc — chủ giải đặt mô tả 1 đấu thủ (áp dụng toàn giải) (#14)
+  app.post<{ Params: { id: string } }>('/:id/contestant-desc', { preHandler: authenticate }, async (req) => {
+    const body = parse(setContestantDescSchema, req.body);
+    return tournaments.setContestantDesc(req.params.id, requireUserId(req), body.name, body.desc ?? null);
+  });
 
   // POST /tournaments/:id/advance — chốt vòng hiện tại (chủ giải)
   app.post<{ Params: { id: string } }>('/:id/advance', { preHandler: authenticate }, async (req) => {

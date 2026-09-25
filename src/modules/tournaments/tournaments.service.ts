@@ -23,6 +23,7 @@ export interface Contestant {
   emoji?: string | null;
   color?: string | null;
   imageUrl?: string | null;
+  desc?: string | null; // mô tả đấu thủ (#14) — hiện ở roster + thẻ đấu thủ
   refType?: string | null;
   refId?: string | null;
 }
@@ -207,8 +208,8 @@ export async function getTournament(id: string, viewerId?: string) {
           .from(rankieOptions).where(inArray(rankieOptions.rankieId, postIds))
       : Promise.resolve([] as { rankieId: string; id: string; position: number; votes: number }[]),
     postIds.length
-      ? db.select({ id: posts.id, closesAt: posts.closesAt }).from(posts).where(inArray(posts.id, postIds))
-      : Promise.resolve([] as { id: string; closesAt: Date | null }[]),
+      ? db.select({ id: posts.id, closesAt: posts.closesAt, title: posts.title, caption: posts.caption }).from(posts).where(inArray(posts.id, postIds))
+      : Promise.resolve([] as { id: string; closesAt: Date | null; title: string; caption: string | null }[]),
     viewerId && postIds.length
       ? db.select({ rankieId: votes.rankieId, optionIds: votes.optionIds }).from(votes)
           .where(and(eq(votes.userId, viewerId), inArray(votes.rankieId, postIds)))
@@ -233,7 +234,8 @@ export async function getTournament(id: string, viewerId?: string) {
   for (const pid of postIds) voteMap.set(pid, { a: aByPost.get(pid) ?? 0, b: bByPost.get(pid) ?? 0 });
 
   const closesByPost = new Map<string, Date | null>();
-  for (const p of closesRows) closesByPost.set(p.id, p.closesAt);
+  const postMetaById = new Map<string, { title: string; caption: string | null }>();
+  for (const p of closesRows) { closesByPost.set(p.id, p.closesAt); postMetaById.set(p.id, { title: p.title, caption: p.caption }); }
 
   // Dự đoán của người xem trên mỗi ván ('a' | 'b') — dùng posById đã có, khỏi truy vấn thêm.
   const pickByPost = new Map<string, 'a' | 'b'>();
@@ -274,6 +276,8 @@ export async function getTournament(id: string, viewerId?: string) {
       myPick: r.rankiePostId ? pickByPost.get(r.rankiePostId) ?? null : null,
       opensAt: r.opensAt ? r.opensAt.toISOString() : null,
       closesAt: r.rankiePostId ? (closesByPost.get(r.rankiePostId)?.toISOString() ?? null) : null,
+      title: r.rankiePostId ? (postMetaById.get(r.rankiePostId)?.title ?? null) : null, // #13
+      caption: r.rankiePostId ? (postMetaById.get(r.rankiePostId)?.caption ?? null) : null, // #13
     })),
   };
 }
@@ -314,13 +318,14 @@ export interface MatchContestantPatch {
   imageUrl?: string | null;
   emoji?: string | null;
   color?: string | null;
+  desc?: string | null;
 }
 export async function customizeMatch(
   id: string,
   viewerId: string,
   round: number,
   position: number,
-  patch: { a?: MatchContestantPatch; b?: MatchContestantPatch },
+  patch: { a?: MatchContestantPatch; b?: MatchContestantPatch; title?: string | null; caption?: string | null },
 ) {
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) throw notFound('Tournament not found');
@@ -340,13 +345,14 @@ export async function customizeMatch(
       imageUrl: p.imageUrl !== undefined ? p.imageUrl : ref.imageUrl,
       emoji: p.emoji !== undefined ? p.emoji : ref.emoji,
       color: p.color !== undefined ? p.color : ref.color,
+      desc: p.desc !== undefined ? p.desc : ref.desc, // #14
     };
   };
   const newA = merge(m.aRef as Contestant | null, patch.a);
   const newB = merge(m.bRef as Contestant | null, patch.b);
   await db.update(tournamentMatches).set({ aRef: newA, bRef: newB }).where(eq(tournamentMatches.id, m.id));
 
-  // Đồng bộ vào 2 lựa chọn của rankie ván (nếu đã có bài) + tiêu đề.
+  // Đồng bộ vào 2 lựa chọn của rankie ván (nếu đã có bài) + tiêu đề/mô tả (#13).
   if (m.rankiePostId) {
     const applyOpt = async (pos: number, ref: Contestant | null) => {
       if (!ref) return;
@@ -357,7 +363,30 @@ export async function customizeMatch(
     };
     if (patch.a) await applyOpt(0, newA);
     if (patch.b) await applyOpt(1, newB);
-    if (newA && newB) await db.update(posts).set({ title: `${newA.name} vs ${newB.name}` }).where(eq(posts.id, m.rankiePostId));
+    // #13: chủ post tự đặt TIÊU ĐỀ (title) / MÔ TẢ (caption) cho trận. Chỉ auto "A vs B" khi
+    // KHÔNG đặt title thủ công (patch.title === undefined) — để trận vẫn có title mặc định.
+    const postPatch: Record<string, unknown> = {};
+    if (patch.title !== undefined) postPatch.title = (patch.title && patch.title.trim()) ? patch.title.trim() : `${newA?.name ?? '?'} vs ${newB?.name ?? '?'}`;
+    else if ((patch.a || patch.b) && newA && newB) postPatch.title = `${newA.name} vs ${newB.name}`;
+    if (patch.caption !== undefined) postPatch.caption = patch.caption ?? null;
+    if (Object.keys(postPatch).length) await db.update(posts).set(postPatch).where(eq(posts.id, m.rankiePostId));
+  }
+  return getTournament(id, viewerId);
+}
+
+// #14: chủ giải đặt MÔ TẢ cho một đấu thủ (theo tên) — áp dụng cho MỌI trận có đấu thủ đó.
+export async function setContestantDesc(id: string, viewerId: string, name: string, desc: string | null) {
+  const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
+  if (!t) throw notFound('Tournament not found');
+  if (t.authorId !== viewerId) throw forbidden('Chỉ chủ giải mới sửa được đấu thủ');
+  const rows = await db.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, id));
+  const clean = desc && desc.trim() ? desc.trim().slice(0, 500) : null;
+  for (const m of rows) {
+    const a = m.aRef as Contestant | null;
+    const b = m.bRef as Contestant | null;
+    const na = a && a.name === name ? { ...a, desc: clean } : a;
+    const nb = b && b.name === name ? { ...b, desc: clean } : b;
+    if (na !== a || nb !== b) await db.update(tournamentMatches).set({ aRef: na, bRef: nb }).where(eq(tournamentMatches.id, m.id));
   }
   return getTournament(id, viewerId);
 }
