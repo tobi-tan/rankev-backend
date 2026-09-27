@@ -198,13 +198,36 @@ export async function getPathById(id: string, viewerId?: string): Promise<PathVi
   const [post] = await db.select().from(posts).where(eq(posts.id, id));
   if (!post || post.type !== 'path') throw notFound('Path not found');
 
-  const [author] = await db.select().from(users).where(eq(users.id, post.authorId));
-  const questions = await db.select().from(pathQuestions).where(eq(pathQuestions.postId, id));
-  const qIds = questions.map((q) => q.id);
-  const answers = qIds.length
-    ? await db.select().from(pathAnswers).where(inArray(pathAnswers.questionId, qIds))
-    : [];
-  const endings = await db.select().from(pathEndings).where(eq(pathEndings.postId, id));
+  // Mọi truy vấn còn lại độc lập nhau → chạy song song (trước đây ~8 lượt tuần tự làm
+  // mở Path chậm, nhất là khi DB ở xa).
+  const [authorRows, questions, answers, endings, partRows, unlocks, s] = await Promise.all([
+    db.select().from(users).where(eq(users.id, post.authorId)),
+    db.select().from(pathQuestions).where(eq(pathQuestions.postId, id)),
+    db
+      .select()
+      .from(pathAnswers)
+      .where(
+        inArray(
+          pathAnswers.questionId,
+          db.select({ id: pathQuestions.id }).from(pathQuestions).where(eq(pathQuestions.postId, id)),
+        ),
+      ),
+    db.select().from(pathEndings).where(eq(pathEndings.postId, id)),
+    viewerId
+      ? db
+          .select({ endingName: participations.endingName })
+          .from(participations)
+          .where(and(eq(participations.userId, viewerId), eq(participations.postId, id)))
+      : Promise.resolve([] as { endingName: string | null }[]),
+    viewerId
+      ? db
+          .select({ name: pathUnlocks.endingName })
+          .from(pathUnlocks)
+          .where(and(eq(pathUnlocks.userId, viewerId), eq(pathUnlocks.postId, id)))
+      : Promise.resolve([] as { name: string }[]),
+    getPostSeries(id), // đính kèm series (chapter) để web nhóm/chuyển chapter
+  ]);
+  const author = authorRows[0];
 
   const answersByQuestion = new Map<string, PathAnswer[]>();
   for (const a of answers) {
@@ -213,24 +236,11 @@ export async function getPathById(id: string, viewerId?: string): Promise<PathVi
     answersByQuestion.set(a.questionId, list);
   }
 
-  let extras: { myEnding?: string | null; unlockedEndings?: string[] } | undefined;
-  if (viewerId) {
-    const [part] = await db
-      .select({ endingName: participations.endingName })
-      .from(participations)
-      .where(and(eq(participations.userId, viewerId), eq(participations.postId, id)));
-    const unlocks = await db
-      .select({ name: pathUnlocks.endingName })
-      .from(pathUnlocks)
-      .where(and(eq(pathUnlocks.userId, viewerId), eq(pathUnlocks.postId, id)));
-    extras = {
-      myEnding: part?.endingName ?? null,
-      unlockedEndings: unlocks.map((u) => u.name),
-    };
-  }
+  const extras = viewerId
+    ? { myEnding: partRows[0]?.endingName ?? null, unlockedEndings: unlocks.map((u) => u.name) }
+    : undefined;
 
   const view = toPathView(post, author ?? null, questions, answersByQuestion, endings, extras);
-  const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
   return { ...view, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
 }
 
