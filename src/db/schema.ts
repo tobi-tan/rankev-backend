@@ -5,6 +5,7 @@ import {
   boolean,
   integer,
   bigint,
+  bigserial,
   smallint,
   timestamp,
   jsonb,
@@ -143,6 +144,23 @@ export const votes = pgTable(
   },
   (t) => ({
     userRankieUnique: unique('votes_user_rankie_unique').on(t.userId, t.rankieId),
+  }),
+);
+
+// Nhật ký phiếu ẩn danh (migration 0028) — nguồn số liệu thật cho "Dòng thời gian cạnh tranh".
+export const voteEvents = pgTable(
+  'vote_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    rankieId: uuid('rankie_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    optionId: uuid('option_id').notNull(),
+    delta: integer('delta').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    rankieIdx: index('vote_events_rankie_idx').on(t.rankieId, t.createdAt),
   }),
 );
 

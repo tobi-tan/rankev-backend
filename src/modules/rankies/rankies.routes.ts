@@ -36,4 +36,10 @@ export default async function rankiesRoutes(app: FastifyInstance): Promise<void>
   app.get<{ Params: { id: string } }>('/:id/results', async (req) => {
     return rankiesService.getResults(req.params.id);
   });
+
+  // GET /rankies/:id/timeline — "Dòng thời gian cạnh tranh" (số liệu thật, mới nhất trước)
+  app.get<{ Params: { id: string }; Querystring: { limit?: string } }>('/:id/timeline', async (req) => {
+    const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 5));
+    return rankiesService.getTimeline(req.params.id, limit);
+  });
 }
