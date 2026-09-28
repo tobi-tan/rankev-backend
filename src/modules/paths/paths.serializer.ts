@@ -33,6 +33,8 @@ export interface PathEndingView {
 }
 
 export interface PathView {
+  /** số lượt gửi bài qua tin nhắn (thanh tương tác: chia sẻ); chỉ có ở GET chi tiết */
+  sharesCount?: number;
   id: string;
   type: 'path';
   title: string;

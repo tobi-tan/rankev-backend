@@ -10,6 +10,7 @@ import {
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { getPostSeries } from '../series/series.service';
+import { countSharesOne } from '../messaging/shares';
 import { toDeckResult, toDeckView, type DeckResult, type DeckView } from './decks.serializer';
 import type { CreateDeckInput, SubmitDeckInput } from './decks.schemas';
 
@@ -129,7 +130,16 @@ async function loadDeck(id: string) {
 
 export async function getDeckById(id: string, viewerId?: string): Promise<DeckView> {
   const { post, questions, options } = await loadDeck(id);
-  const [author] = await db.select().from(users).where(eq(users.id, post.authorId));
+  // Các truy vấn phụ độc lập → 1 lượt song song.
+  const [authorRows, partRows, s, sharesCount] = await Promise.all([
+    db.select().from(users).where(eq(users.id, post.authorId)),
+    viewerId
+      ? db.select().from(participations).where(and(eq(participations.userId, viewerId), eq(participations.postId, id)))
+      : Promise.resolve([]),
+    getPostSeries(id), // đính kèm series (chapter) để web nhóm/chuyển chapter
+    countSharesOne(id),
+  ]);
+  const author = authorRows[0];
 
   const optionsByQuestion = new Map<string, DeckOption[]>();
   for (const o of options) {
@@ -138,20 +148,12 @@ export async function getDeckById(id: string, viewerId?: string): Promise<DeckVi
     optionsByQuestion.set(o.questionId, list);
   }
 
-  let myResult;
-  if (viewerId) {
-    const [p] = await db
-      .select()
-      .from(participations)
-      .where(and(eq(participations.userId, viewerId), eq(participations.postId, id)));
-    myResult = p ?? null;
-  }
+  const myResult = viewerId ? (partRows[0] ?? null) : undefined;
 
   // Chủ bài được thấy cờ `correct` (để sửa Exam); người khác thì không.
   const includeCorrect = Boolean(viewerId && viewerId === post.authorId);
   const view = toDeckView(post, author ?? null, questions, optionsByQuestion, myResult, includeCorrect);
-  const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
-  return { ...view, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
+  return { ...view, sharesCount, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
 }
 
 function setEqual(a: string[], b: string[]): boolean {

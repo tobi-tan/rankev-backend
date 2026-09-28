@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import { feedExclusions } from '../moderation/moderation.service';
+import { countShares, countSharesOne } from '../messaging/shares';
 import { db } from '../../db';
 import {
   tournaments,
@@ -379,7 +380,7 @@ async function readTournament(id: string, viewerId?: string) {
 
   // Vòng 2 (song song): mọi truy vấn phụ độc lập chạy CÙNG LÚC thay vì tuần tự
   // (trước đây ~8 round-trip nối tiếp tới Neon → chậm ~1-2s; nay còn ~2 vòng).
-  const [allOpts, closesRows, voteRows, [{ cc } = { cc: 0 }], bmRows] = await Promise.all([
+  const [allOpts, closesRows, voteRows, [{ cc } = { cc: 0 }], bmRows, shareCount] = await Promise.all([
     // 1 truy vấn gộp cho TẤT CẢ options mọi ván (thay cho N truy vấn matchVotes lẻ).
     postIds.length
       ? db.select({ rankieId: rankieOptions.rankieId, id: rankieOptions.id, position: rankieOptions.position, votes: rankieOptions.votes })
@@ -397,6 +398,7 @@ async function readTournament(id: string, viewerId?: string) {
       ? db.select({ userId: tournamentBookmarks.userId }).from(tournamentBookmarks)
           .where(and(eq(tournamentBookmarks.userId, viewerId), eq(tournamentBookmarks.tournamentId, id))).limit(1)
       : Promise.resolve([] as { userId: string }[]),
+    countSharesOne(id), // lượt gửi giải qua tin nhắn
   ]);
 
   // voteMap (a=vị trí 0, b=vị trí 1) + posById — cùng dựng từ 1 mảng allOpts.
@@ -437,6 +439,7 @@ async function readTournament(id: string, viewerId?: string) {
     caption: settings.caption ?? null,
     media: settings.media ?? null,
     commentCount: Number(cc) || 0,
+    shareCount,
     bookmarked,
     status: t.status,
     advanceMode: settings.advanceMode ?? 'vote',
@@ -760,6 +763,7 @@ export async function listTournamentFeed(limit = 30, viewerId?: string) {
     ? await db.select({ tid: comments.tournamentId, c: count() }).from(comments).where(and(inArray(comments.tournamentId, ids), isNull(comments.deletedAt))).groupBy(comments.tournamentId)
     : [];
   const ccBy = new Map(ccRows.map((r) => [r.tid as string, Number(r.c)]));
+  const sharesBy = await countShares(ids); // lượt gửi giải qua tin nhắn
 
   return tRows.map((r) => {
     const a = agg.get(r.t.id) ?? { rounds: 0, matchCount: 0, votes: 0 };
@@ -778,6 +782,7 @@ export async function listTournamentFeed(limit = 30, viewerId?: string) {
       matchCount: a.matchCount,
       totalVotes: a.votes,
       commentCount: ccBy.get(r.t.id) ?? 0,
+      shareCount: sharesBy.get(r.t.id) ?? 0,
       bookmarked: bookmarkedSet.has(r.t.id),
       createdAt: r.t.createdAt.toISOString(),
       author: r.author ? toPublicUser(r.author) : null,

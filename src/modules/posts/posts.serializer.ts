@@ -17,6 +17,8 @@ export interface RankieOptionView {
 }
 
 export interface RankieView {
+  /** số lượt gửi bài qua tin nhắn (thanh tương tác: chia sẻ); chỉ có ở GET chi tiết */
+  sharesCount?: number;
   id: string;
   type: Post['type'];
   title: string;

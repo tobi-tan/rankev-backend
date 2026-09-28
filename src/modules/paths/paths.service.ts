@@ -12,6 +12,7 @@ import {
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { getPostSeries } from '../series/series.service';
+import { countSharesOne } from '../messaging/shares';
 import { toPathView, type PathView } from './paths.serializer';
 import type { CreatePathInput, CompletePathInput } from './paths.schemas';
 
@@ -200,7 +201,7 @@ export async function getPathById(id: string, viewerId?: string): Promise<PathVi
 
   // Mọi truy vấn còn lại độc lập nhau → chạy song song (trước đây ~8 lượt tuần tự làm
   // mở Path chậm, nhất là khi DB ở xa).
-  const [authorRows, questions, answers, endings, partRows, unlocks, s] = await Promise.all([
+  const [authorRows, questions, answers, endings, partRows, unlocks, s, sharesCount] = await Promise.all([
     db.select().from(users).where(eq(users.id, post.authorId)),
     db.select().from(pathQuestions).where(eq(pathQuestions.postId, id)),
     db
@@ -226,6 +227,7 @@ export async function getPathById(id: string, viewerId?: string): Promise<PathVi
           .where(and(eq(pathUnlocks.userId, viewerId), eq(pathUnlocks.postId, id)))
       : Promise.resolve([] as { name: string }[]),
     getPostSeries(id), // đính kèm series (chapter) để web nhóm/chuyển chapter
+    countSharesOne(id),
   ]);
   const author = authorRows[0];
 
@@ -241,7 +243,7 @@ export async function getPathById(id: string, viewerId?: string): Promise<PathVi
     : undefined;
 
   const view = toPathView(post, author ?? null, questions, answersByQuestion, endings, extras);
-  return { ...view, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
+  return { ...view, sharesCount, seriesId: s?.seriesId ?? null, seriesName: s?.seriesName ?? null };
 }
 
 export async function completePath(

@@ -4,6 +4,7 @@ import { bookmarks, posts, rankieOptions, users, votes, tournaments, tournamentM
 import { forbidden, notFound } from '../../lib/errors';
 import { encodeCursor, decodeCursor } from '../../lib/cursor';
 import { feedExclusions } from '../moderation/moderation.service';
+import { countSharesOne } from '../messaging/shares';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 import { toRankieView, type RankieView } from './posts.serializer';
 import { getPostSeries } from '../series/series.service';
@@ -86,26 +87,30 @@ export async function getRankieById(id: string, viewerId?: string): Promise<Rank
   const [post] = await db.select().from(posts).where(eq(posts.id, id));
   if (!post || post.type !== 'rankie') throw notFound('Rankie not found');
 
-  const [author, options, myVote, bookmarked] = await Promise.all([
+  // Mọi truy vấn phụ độc lập → 1 lượt song song.
+  const [author, options, myVote, bookmarked, s, tmRows, sharesCount] = await Promise.all([
     fetchAuthor(post.authorId),
     db.select().from(rankieOptions).where(eq(rankieOptions.rankieId, id)),
     fetchMyVote(id, viewerId),
     fetchBookmarked(id, viewerId),
+    getPostSeries(id), // đính kèm series (chapter) để web nhóm/chuyển chapter
+    // Nếu rankie này là một VÁN của giải đấu → đính kèm id/tên giải để web cho quay lại thẻ đấu.
+    db
+      .select({ tournamentId: tournamentMatches.tournamentId, title: tournaments.title, aRef: tournamentMatches.aRef, winnerRef: tournamentMatches.winnerRef })
+      .from(tournamentMatches)
+      .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
+      .where(eq(tournamentMatches.rankiePostId, id))
+      .limit(1),
+    countSharesOne(id),
   ]);
+  const tm = tmRows[0];
 
   const view = toRankieView(post, author, options, myVote, bookmarked);
-  const s = await getPostSeries(id); // đính kèm series (chapter) để web nhóm/chuyển chapter
-  // Nếu rankie này là một VÁN của giải đấu → đính kèm id/tên giải để web cho quay lại thẻ đấu.
-  const [tm] = await db
-    .select({ tournamentId: tournamentMatches.tournamentId, title: tournaments.title, aRef: tournamentMatches.aRef, winnerRef: tournamentMatches.winnerRef })
-    .from(tournamentMatches)
-    .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
-    .where(eq(tournamentMatches.rankiePostId, id))
-    .limit(1);
   const wName = (tm?.winnerRef as { name?: string } | null)?.name;
   const aName = (tm?.aRef as { name?: string } | null)?.name;
   return {
     ...view,
+    sharesCount,
     seriesId: s?.seriesId ?? null,
     seriesName: s?.seriesName ?? null,
     tournamentId: tm?.tournamentId ?? null,

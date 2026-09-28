@@ -14,6 +14,26 @@ afterAll(async () => {
 });
 
 describe('messaging', () => {
+  it('chia sẻ bài: tin kèm bản xem trước như thẻ feed + tăng số chia sẻ của bài', async () => {
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const rk = await createRankie(app, alice.accessToken, { title: 'ShareMe' });
+    const conv = (await app.inject({ method: 'POST', url: '/conversations', headers: bearer(alice.accessToken), payload: { userId: bob.user.id } })).json();
+
+    const sent = await app.inject({ method: 'POST', url: `/conversations/${conv.id}/messages`, headers: bearer(alice.accessToken), payload: { kind: 'share', refType: 'rankie', refId: rk.id } });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.json().ref).toMatchObject({ kind: 'post', id: rk.id, title: 'ShareMe', type: 'rankie' });
+    expect(Array.isArray(sent.json().ref.options)).toBe(true);
+
+    const msgs = (await app.inject({ method: 'GET', url: `/conversations/${conv.id}/messages`, headers: bearer(bob.accessToken) })).json().items;
+    expect(msgs[0].ref).toMatchObject({ id: rk.id, title: 'ShareMe' });
+
+    const detail = (await app.inject({ method: 'GET', url: `/posts/${rk.id}` })).json();
+    expect(detail.sharesCount).toBe(1);
+    const feed = (await app.inject({ method: 'GET', url: '/feed?limit=50', headers: bearer(bob.accessToken) })).json();
+    expect(feed.items.find((i: any) => i.id === rk.id)?.sharesCount).toBe(1);
+  });
+
   it('opens a DM idempotently, sends text, marks read', async () => {
     const alice = await registerUser(app);
     const bob = await registerUser(app);

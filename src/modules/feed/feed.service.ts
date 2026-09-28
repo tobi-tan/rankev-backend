@@ -18,6 +18,7 @@ import {
 } from '../../db/schema';
 import { decodeCursor, encodeCursor } from '../../lib/cursor';
 import { feedExclusions } from '../moderation/moderation.service';
+import { countShares } from '../messaging/shares';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 
 export interface FeedOption {
@@ -62,6 +63,8 @@ export interface FeedSummary {
   /** rankie=options, path=endings, deck=questions */
   size: number;
   commentsCount: number;
+  /** số lượt gửi bài này qua tin nhắn (thanh tương tác: chia sẻ) */
+  sharesCount: number;
   /** top options for rankie cards (sorted desc, up to 4) */
   options?: FeedOption[];
 }
@@ -79,7 +82,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   const deckIds = rows.filter((r) => r.post.type === 'deck').map((r) => r.post.id);
   const allIds = rows.map((r) => r.post.id);
 
-  const [rankieOptRows, pathEnds, pathQs, deckQs, parts, commentRows] = await Promise.all([
+  const [rankieOptRows, pathEnds, pathQs, deckQs, parts, commentRows, sharesBy] = await Promise.all([
     rankieIds.length
       ? db
           .select({
@@ -127,6 +130,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
           .where(and(inArray(comments.postId, allIds), isNull(comments.deletedAt)))
           .groupBy(comments.postId)
       : Promise.resolve([] as { id: string; c: number }[]),
+    countShares(allIds),
   ]);
 
   // Group rankie options → total votes, count, and top-4 sorted desc.
@@ -211,6 +215,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       engagement,
       size,
       commentsCount: commentsBy.get(p.id) ?? 0,
+      sharesCount: sharesBy.get(p.id) ?? 0,
       options: p.type === 'rankie' ? agg?.top ?? [] : undefined,
     };
   });
@@ -262,6 +267,19 @@ export async function listFeed(
       : null;
 
   return { items, nextCursor };
+}
+
+/** Tóm tắt kiểu thẻ feed cho một nhóm bài bất kỳ (vd. xem trước bài được chia sẻ trong chat). */
+export async function getSummariesByIds(ids: string[]): Promise<Map<string, FeedSummary>> {
+  const uuids = [...new Set(ids)].filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+  if (!uuids.length) return new Map();
+  const rows = await db
+    .select({ post: posts, author: users })
+    .from(posts)
+    .leftJoin(users, eq(users.id, posts.authorId))
+    .where(and(inArray(posts.id, uuids), isNull(posts.deletedAt)));
+  const items = await buildSummaries(rows);
+  return new Map(items.map((s) => [s.id, s]));
 }
 
 // Hashtag đang thịnh hành: đếm số bài theo tag (ưu tiên bài gần đây), trả top N.

@@ -5,8 +5,11 @@ import {
   conversationMembers,
   messages,
   messagePollVotes,
+  tournaments,
   users,
 } from '../../db/schema';
+import { getSummariesByIds } from '../feed/feed.service';
+import { toPublicUser } from '../users/users.serializer';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { isBlockedBetween } from '../moderation/moderation.service';
 
@@ -168,7 +171,45 @@ async function pollTally(messageId: string, viewerId: string) {
   return { counts, myVote, total: rows.length };
 }
 
-async function serializeMessage(m: typeof messages.$inferSelect, viewerId: string) {
+/**
+ * Bản xem trước cho tin chia sẻ (như thẻ trên feed): bài → tóm tắt feed (tác giả, tiêu đề,
+ * ảnh, top lựa chọn, số tương tác); giải → tên, ảnh, trạng thái, nhà vô địch. Bài đã xoá → null.
+ */
+async function loadRefPreviews(rows: (typeof messages.$inferSelect)[]): Promise<Map<string, unknown>> {
+  const shares = rows.filter((m) => m.kind === 'share' && m.refId);
+  const tourIds = [...new Set(shares.filter((m) => m.refType === 'tournament').map((m) => m.refId as string))];
+  const postIds = [...new Set(shares.filter((m) => m.refType !== 'tournament').map((m) => m.refId as string))];
+  const uuid = (x: string) => /^[0-9a-f-]{36}$/i.test(x);
+  const [summaries, tRows] = await Promise.all([
+    getSummariesByIds(postIds),
+    tourIds.filter(uuid).length
+      ? db
+          .select({ t: tournaments, author: users })
+          .from(tournaments)
+          .leftJoin(users, eq(users.id, tournaments.authorId))
+          .where(inArray(tournaments.id, tourIds.filter(uuid)))
+      : Promise.resolve([] as { t: typeof tournaments.$inferSelect; author: typeof users.$inferSelect | null }[]),
+  ]);
+  const out = new Map<string, unknown>();
+  for (const [id, s] of summaries) out.set(id, { kind: 'post', ...s });
+  for (const r of tRows) {
+    const settings = (r.t.settings as { media?: unknown; caption?: string } | null) ?? {};
+    out.set(r.t.id, {
+      kind: 'tournament',
+      id: r.t.id,
+      title: r.t.title,
+      caption: settings.caption ?? null,
+      media: settings.media ?? null,
+      status: r.t.status,
+      currentRound: r.t.currentRound,
+      championRef: r.t.championRef,
+      author: r.author ? toPublicUser(r.author) : null,
+    });
+  }
+  return out;
+}
+
+async function serializeMessage(m: typeof messages.$inferSelect, viewerId: string, refs?: Map<string, unknown>) {
   const base = {
     id: m.id,
     conversationId: m.conversationId,
@@ -179,6 +220,10 @@ async function serializeMessage(m: typeof messages.$inferSelect, viewerId: strin
     refId: m.refId,
     time: m.createdAt.toISOString(),
   };
+  if (m.kind === 'share' && m.refId) {
+    const map = refs ?? (await loadRefPreviews([m]));
+    return { ...base, ref: map.get(m.refId) ?? null };
+  }
   if (m.kind === 'poll') {
     const tally = await pollTally(m.id, viewerId);
     return { ...base, poll: m.poll, pollVotes: tally.counts, pollTotal: tally.total, myVote: tally.myVote };
@@ -199,7 +244,8 @@ export async function getMessages(conversationId: string, viewerId: string) {
     .update(conversationMembers)
     .set({ lastReadAt: new Date() })
     .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, viewerId)));
-  return Promise.all(rows.map((m) => serializeMessage(m, viewerId)));
+  const refs = await loadRefPreviews(rows); // gộp 1 lượt cho mọi tin chia sẻ
+  return Promise.all(rows.map((m) => serializeMessage(m, viewerId, refs)));
 }
 
 export interface SendMessageInput {
