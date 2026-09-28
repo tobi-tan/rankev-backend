@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   posts,
@@ -316,41 +316,72 @@ export async function getUnlocks(userId: string, postId: string): Promise<string
 }
 
 /** Everyone who has played this path (any ending), capped — for paths with >5 endings. */
-export async function getAllCompanions(
-  postId: string,
-  limit = 12,
-): Promise<{ id: string; handle: string; name: string; avatarEmoji: string | null; endingName: string | null }[]> {
-  const rows = await db
-    .select({
-      id: users.id,
-      handle: users.handle,
-      name: users.name,
-      avatarEmoji: users.avatarEmoji,
-      endingName: participations.endingName,
-    })
-    .from(participations)
-    .innerJoin(users, eq(users.id, participations.userId))
-    .where(and(eq(participations.postId, postId), eq(participations.type, 'path')))
-    .limit(limit);
-  return rows;
+export interface Companion {
+  id: string;
+  handle: string;
+  name: string;
+  avatarEmoji: string | null;
+  avatarColor: string | null;
+  avatarUrl: string | null;
 }
 
-/** Users who have reached a given ending (public profiles, capped). */
+const companionCols = {
+  id: users.id,
+  handle: users.handle,
+  name: users.name,
+  avatarEmoji: users.avatarEmoji,
+  avatarColor: users.avatarColor,
+  avatarUrl: users.avatarUrl,
+};
+
+/**
+ * Mọi người đã chơi Path (>5 endings → "Cộng đồng Path"). Người mới nhất trước, bỏ chính
+ * người xem; `total` = tổng số người khác (không bị giới hạn bởi `limit`).
+ */
+export async function getAllCompanions(
+  postId: string,
+  viewerId?: string,
+  limit = 12,
+): Promise<{ companions: (Companion & { endingName: string | null })[]; total: number }> {
+  const where = and(
+    eq(participations.postId, postId),
+    eq(participations.type, 'path'),
+    viewerId ? ne(participations.userId, viewerId) : undefined,
+  );
+  const [companions, [{ n }]] = await Promise.all([
+    db
+      .select({ ...companionCols, endingName: participations.endingName })
+      .from(participations)
+      .innerJoin(users, eq(users.id, participations.userId))
+      .where(where)
+      .orderBy(desc(participations.participatedAt))
+      .limit(limit),
+    db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(participations).where(where),
+  ]);
+  return { companions, total: n };
+}
+
+/** Người đã tới một ending (≤5 endings → "Bạn đồng hành"). Người mới nhất trước, bỏ người xem. */
 export async function getCompanions(
   postId: string,
   endingName: string,
+  viewerId?: string,
   limit = 5,
-): Promise<{ id: string; handle: string; name: string; avatarEmoji: string | null }[]> {
-  const rows = await db
-    .select({
-      id: users.id,
-      handle: users.handle,
-      name: users.name,
-      avatarEmoji: users.avatarEmoji,
-    })
-    .from(pathUnlocks)
-    .innerJoin(users, eq(users.id, pathUnlocks.userId))
-    .where(and(eq(pathUnlocks.postId, postId), eq(pathUnlocks.endingName, endingName)))
-    .limit(limit);
-  return rows;
+): Promise<{ companions: Companion[]; total: number }> {
+  const where = and(
+    eq(pathUnlocks.postId, postId),
+    eq(pathUnlocks.endingName, endingName),
+    viewerId ? ne(pathUnlocks.userId, viewerId) : undefined,
+  );
+  const [companions, [{ n }]] = await Promise.all([
+    db
+      .select(companionCols)
+      .from(pathUnlocks)
+      .innerJoin(users, eq(users.id, pathUnlocks.userId))
+      .where(where)
+      .orderBy(desc(pathUnlocks.unlockedAt))
+      .limit(limit),
+    db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(pathUnlocks).where(where),
+  ]);
+  return { companions, total: n };
 }

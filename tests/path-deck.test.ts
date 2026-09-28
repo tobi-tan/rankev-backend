@@ -33,6 +33,11 @@ describe('path', () => {
 
     const comp = await app.inject({ method: 'GET', url: `/paths/${path.id}/companions` });
     expect(comp.json().companions.length).toBeGreaterThanOrEqual(1);
+    expect(comp.json().total).toBeGreaterThanOrEqual(1);
+
+    // Người xem không tự thấy mình trong "bạn đồng hành".
+    const mine = await app.inject({ method: 'GET', url: `/paths/${path.id}/companions/${encodeURIComponent('Kết A')}`, headers: bearer(accessToken) });
+    expect(mine.json()).toEqual({ companions: [], total: 0 });
   });
 });
 

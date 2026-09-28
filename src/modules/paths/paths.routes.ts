@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { parse } from '../../lib/validate';
-import { authenticate, requireUserId } from '../../plugins/auth';
+import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
 import { completePathSchema } from './paths.schemas';
 import * as paths from './paths.service';
 
@@ -25,21 +25,17 @@ export default async function pathsRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // GET /paths/:id/companions — everyone who played (>5 endings)
-  app.get<{ Params: { id: string } }>('/:id/companions', async (req) => {
-    const companions = await paths.getAllCompanions(req.params.id);
-    return { companions };
+  // GET /paths/:id/companions — everyone who played (>5 endings) → { companions, total }
+  app.get<{ Params: { id: string } }>('/:id/companions', { preHandler: optionalAuth }, async (req) => {
+    return paths.getAllCompanions(req.params.id, req.user?.id);
   });
 
-  // GET /paths/:id/companions/:endingName
+  // GET /paths/:id/companions/:endingName → { companions, total }
   app.get<{ Params: { id: string; endingName: string } }>(
     '/:id/companions/:endingName',
+    { preHandler: optionalAuth },
     async (req) => {
-      const companions = await paths.getCompanions(
-        req.params.id,
-        decodeURIComponent(req.params.endingName),
-      );
-      return { companions };
+      return paths.getCompanions(req.params.id, decodeURIComponent(req.params.endingName), req.user?.id);
     },
   );
 }
