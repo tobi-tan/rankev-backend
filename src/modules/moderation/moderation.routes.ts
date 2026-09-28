@@ -56,4 +56,34 @@ export default async function moderationRoutes(app: FastifyInstance): Promise<vo
       return reply.code(204).send();
     },
   );
+
+  // "Ẩn bài của @x" — chỉ lọc khỏi feed của mình.
+  app.post<{ Params: { id: string } }>('/users/:id/mute', { preHandler: authenticate }, async (req, reply) => {
+    await mod.muteUser(requireUserId(req), req.params.id);
+    return reply.code(204).send();
+  });
+  app.delete<{ Params: { id: string } }>('/users/:id/mute', { preHandler: authenticate }, async (req, reply) => {
+    await mod.unmuteUser(requireUserId(req), req.params.id);
+    return reply.code(204).send();
+  });
+
+  // "Không quan tâm" một bài.
+  app.post<{ Params: { id: string } }>('/posts/:id/hide', { preHandler: authenticate }, async (req, reply) => {
+    await mod.hidePost(requireUserId(req), req.params.id);
+    return reply.code(204).send();
+  });
+  app.delete<{ Params: { id: string } }>('/posts/:id/hide', { preHandler: authenticate }, async (req, reply) => {
+    await mod.unhidePost(requireUserId(req), req.params.id);
+    return reply.code(204).send();
+  });
+  // Khôi phục mọi bài đã ẩn.
+  app.delete('/users/me/hidden-posts', { preHandler: authenticate }, async (req, reply) => {
+    await mod.clearHiddenPosts(requireUserId(req));
+    return reply.code(204).send();
+  });
+
+  // GET /users/me/moderation — người đã chặn, đã ẩn, id các bài đã ẩn.
+  app.get('/users/me/moderation', { preHandler: authenticate }, async (req) => {
+    return mod.getModeration(requireUserId(req));
+  });
 }

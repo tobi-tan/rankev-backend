@@ -45,6 +45,48 @@ describe('moderation', () => {
     expect(await inFeed(viewer.accessToken, rk.id)).toBe(true);
   });
 
+  it('"Không quan tâm" ẩn đúng 1 bài; "Ẩn bài của @x" ẩn mọi bài của họ; khôi phục được', async () => {
+    const author = await registerUser(app);
+    const viewer = await registerUser(app);
+    const a = await createRankie(app, author.accessToken, { title: 'HideA' });
+    const b = await createRankie(app, author.accessToken, { title: 'HideB' });
+    const h = bearer(viewer.accessToken);
+
+    expect((await app.inject({ method: 'POST', url: `/posts/${a.id}/hide`, headers: h, payload: {} })).statusCode).toBe(204);
+    expect(await inFeed(viewer.accessToken, a.id)).toBe(false);
+    expect(await inFeed(viewer.accessToken, b.id)).toBe(true);
+    expect(await inFeed(author.accessToken, a.id)).toBe(true); // chỉ ẩn với người bấm
+
+    expect((await app.inject({ method: 'POST', url: `/users/${author.user.id}/mute`, headers: h, payload: {} })).statusCode).toBe(204);
+    expect(await inFeed(viewer.accessToken, b.id)).toBe(false);
+
+    const m = (await app.inject({ method: 'GET', url: '/users/me/moderation', headers: h })).json();
+    expect(m.hiddenPostIds).toEqual([a.id]);
+    expect(m.muted.map((u: any) => u.id)).toEqual([author.user.id]);
+    expect(m.blocked).toEqual([]);
+
+    await app.inject({ method: 'DELETE', url: `/users/${author.user.id}/mute`, headers: h });
+    await app.inject({ method: 'DELETE', url: '/users/me/hidden-posts', headers: h });
+    expect(await inFeed(viewer.accessToken, a.id)).toBe(true);
+    expect(await inFeed(viewer.accessToken, b.id)).toBe(true);
+  });
+
+  it('chặn là 2 chiều: người bị chặn cũng không thấy bài, và không ai nhắn tin được', async () => {
+    const x = await registerUser(app);
+    const y = await registerUser(app);
+    const post = await createRankie(app, x.accessToken, { title: 'BlockBoth' });
+    // Mở DM trước khi chặn
+    const conv = (await app.inject({ method: 'POST', url: '/conversations', headers: bearer(y.accessToken), payload: { userId: x.user.id } })).json();
+
+    await app.inject({ method: 'POST', url: `/users/${y.user.id}/block`, headers: bearer(x.accessToken), payload: {} });
+    expect(await inFeed(y.accessToken, post.id)).toBe(false);
+
+    const send = await app.inject({ method: 'POST', url: `/conversations/${conv.id}/messages`, headers: bearer(y.accessToken), payload: { body: 'hi' } });
+    expect(send.statusCode).toBe(403);
+    const reopen = await app.inject({ method: 'POST', url: '/conversations', headers: bearer(x.accessToken), payload: { userId: y.user.id } });
+    expect(reopen.statusCode).toBe(403);
+  });
+
   it('rejects self-block', async () => {
     const u = await registerUser(app);
     const res = await app.inject({ method: 'POST', url: `/users/${u.user.id}/block`, headers: bearer(u.accessToken), payload: {} });

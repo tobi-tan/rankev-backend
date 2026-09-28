@@ -8,6 +8,7 @@ import {
   users,
 } from '../../db/schema';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
+import { isBlockedBetween } from '../moderation/moderation.service';
 
 // ---- Author preview dùng chung cho danh sách hội thoại + tin nhắn ----
 function authorView(u: {
@@ -53,6 +54,7 @@ export async function getOrCreateDM(userId: string, otherUserId: string) {
   if (userId === otherUserId) throw badRequest('Không thể nhắn tin cho chính mình');
   const [other] = await db.select({ id: users.id }).from(users).where(eq(users.id, otherUserId));
   if (!other) throw notFound('Không tìm thấy người dùng');
+  if (await isBlockedBetween(userId, otherUserId)) throw forbidden('Không thể nhắn tin với người này');
 
   // DM đã tồn tại? (hội thoại không phải nhóm, chứa đúng cả hai)
   const mine = await db
@@ -210,6 +212,12 @@ export interface SendMessageInput {
 
 export async function sendMessage(conversationId: string, senderId: string, input: SendMessageInput) {
   await assertMember(conversationId, senderId);
+  // DM 1-1: nếu một trong hai đã chặn người kia thì không gửi được nữa.
+  const [conv] = await db.select({ isGroup: conversations.isGroup }).from(conversations).where(eq(conversations.id, conversationId));
+  if (conv && !conv.isGroup) {
+    const others = (await conversationMemberIds(conversationId)).filter((id) => id !== senderId);
+    if (others[0] && (await isBlockedBetween(senderId, others[0]))) throw forbidden('Không thể nhắn tin với người này');
+  }
   const kind = input.kind || 'text';
   if (kind === 'text' && !input.body?.trim()) throw badRequest('Tin nhắn trống');
   if (kind === 'share' && !input.refId) throw badRequest('Thiếu bài chia sẻ');

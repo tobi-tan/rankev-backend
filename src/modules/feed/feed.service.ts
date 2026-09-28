@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql, count } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, or, sql, count } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   posts,
@@ -17,7 +17,7 @@ import {
   type User,
 } from '../../db/schema';
 import { decodeCursor, encodeCursor } from '../../lib/cursor';
-import { getBlockedIds } from '../moderation/moderation.service';
+import { feedExclusions } from '../moderation/moderation.service';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 
 export interface FeedOption {
@@ -233,10 +233,8 @@ export async function listFeed(
   // (bảng đấu + các trận live/đã kết thúc), các trận theo dõi ngay trong carousel đó — không
   // để lẻ ra feed nữa (tránh ngập + để "series giải đấu" gom gọn một chỗ).
   conditions.push(sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`);
-  if (viewerId) {
-    const blocked = await getBlockedIds(viewerId);
-    if (blocked.length) conditions.push(notInArray(posts.authorId, blocked));
-  }
+  // Chặn (2 chiều) / ẩn người / "Không quan tâm" → lọc ngay trong truy vấn.
+  if (viewerId) conditions.push(...feedExclusions(viewerId, posts.authorId, posts.id));
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (cursor) {
     const d = new Date(cursor.createdAt);

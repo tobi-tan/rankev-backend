@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
+import { feedExclusions } from '../moderation/moderation.service';
 import { db } from '../../db';
 import {
   tournaments,
@@ -718,6 +719,8 @@ export async function listTournamentFeed(limit = 30, viewerId?: string) {
     .select({ t: tournaments, author: users })
     .from(tournaments)
     .leftJoin(users, eq(users.id, tournaments.authorId))
+    // Giải của người đã chặn (2 chiều) / đã ẩn không lên feed (3 điều kiện theo tác giả).
+    .where(viewerId ? and(...feedExclusions(viewerId, tournaments.authorId, tournaments.id).slice(0, 3)) : undefined)
     .orderBy(desc(tournaments.createdAt))
     .limit(limit);
   const ids = tRows.map((r) => r.t.id);

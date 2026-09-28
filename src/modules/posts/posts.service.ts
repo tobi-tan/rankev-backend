@@ -1,9 +1,9 @@
-import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { bookmarks, posts, rankieOptions, users, votes, tournaments, tournamentMatches, type RankieOption } from '../../db/schema';
 import { forbidden, notFound } from '../../lib/errors';
 import { encodeCursor, decodeCursor } from '../../lib/cursor';
-import { getBlockedIds } from '../moderation/moderation.service';
+import { feedExclusions } from '../moderation/moderation.service';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 import { toRankieView, type RankieView } from './posts.serializer';
 import { getPostSeries } from '../series/series.service';
@@ -133,11 +133,8 @@ export async function listRankies(
   const conditions = [eq(posts.type, query.type), isNull(posts.deletedAt)];
   if (query.category) conditions.push(eq(posts.category, query.category));
 
-  // Hide posts authored by users this viewer has blocked.
-  if (viewerId) {
-    const blocked = await getBlockedIds(viewerId);
-    if (blocked.length) conditions.push(notInArray(posts.authorId, blocked));
-  }
+  // Bỏ bài của người đã chặn (2 chiều) / đã ẩn, và bài "Không quan tâm".
+  if (viewerId) conditions.push(...feedExclusions(viewerId, posts.authorId, posts.id));
 
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (cursor) {

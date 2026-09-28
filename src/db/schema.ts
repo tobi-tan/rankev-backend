@@ -298,6 +298,36 @@ export const userBlocks = pgTable(
   }),
 );
 
+// "Ẩn bài của @x" (migration 0029) — chỉ lọc khỏi feed, không chặn hồ sơ/tin nhắn.
+export const userMutes = pgTable(
+  'user_mutes',
+  {
+    muterId: uuid('muter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    mutedId: uuid('muted_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.muterId, t.mutedId] }) }),
+);
+
+// "Không quan tâm" một bài (migration 0029).
+export const hiddenPosts = pgTable(
+  'hidden_posts',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.userId, t.postId] }) }),
+);
+
 export const commentRanks = pgTable(
   'comment_ranks',
   {
