@@ -269,6 +269,69 @@ export async function listFeed(
   return { items, nextCursor };
 }
 
+/** Mẫu LIKE an toàn: bỏ dấu + chữ thường ở phía SQL, thoát % _ \ trong từ khoá. */
+function likePattern(q: string): string {
+  return `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * Tìm kiếm toàn hệ thống (không chỉ bài đã tải ở máy): bài (tiêu đề / mô tả / hashtag),
+ * người dùng (tên / @handle), giải đấu (tên). Không phân biệt dấu tiếng Việt, tôn trọng
+ * chặn/ẩn của người xem. Bài: mới nhất trước.
+ */
+export async function searchAll(
+  qRaw: string,
+  viewerId?: string,
+  limit = 30,
+): Promise<{ posts: FeedSummary[]; users: PublicUser[]; tournamentIds: string[] }> {
+  const q = qRaw.trim().replace(/^[#@]+/, '');
+  if (!q) return { posts: [], users: [], tournamentIds: [] };
+  const pat = likePattern(q);
+  const match = (col: unknown) => sql`unaccent(lower(coalesce(${col}, ''))) LIKE unaccent(${pat})`;
+
+  const postConds = [
+    isNull(posts.deletedAt),
+    sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`,
+    or(
+      match(posts.title),
+      match(posts.caption),
+      sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE unaccent(lower(tg)) LIKE unaccent(${pat}))`,
+    )!,
+    ...(viewerId ? feedExclusions(viewerId, posts.authorId, posts.id).slice(0, 2) : []), // chặn 2 chiều
+  ];
+  const userConds = [
+    or(match(users.name), match(users.handle))!,
+    ...(viewerId
+      ? [
+          sql`${users.id} NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ${viewerId})`,
+          sql`${users.id} NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ${viewerId})`,
+        ]
+      : []),
+  ];
+
+  const [postRows, userRows, tourRows] = await Promise.all([
+    db
+      .select({ post: posts, author: users })
+      .from(posts)
+      .leftJoin(users, eq(users.id, posts.authorId))
+      .where(and(...postConds))
+      .orderBy(desc(posts.createdAt))
+      .limit(limit),
+    db.select().from(users).where(and(...userConds)).orderBy(users.name).limit(8),
+    db
+      .select({ id: tournaments.id })
+      .from(tournaments)
+      .where(match(tournaments.title))
+      .orderBy(desc(tournaments.createdAt))
+      .limit(6),
+  ]);
+  return {
+    posts: await buildSummaries(postRows),
+    users: userRows.map((u) => toPublicUser(u)),
+    tournamentIds: tourRows.map((r) => r.id),
+  };
+}
+
 /** Tóm tắt kiểu thẻ feed cho một nhóm bài bất kỳ (vd. xem trước bài được chia sẻ trong chat). */
 export async function getSummariesByIds(ids: string[]): Promise<Map<string, FeedSummary>> {
   const uuids = [...new Set(ids)].filter((x) => /^[0-9a-f-]{36}$/i.test(x));

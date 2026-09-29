@@ -717,13 +717,17 @@ export async function listMyTournaments(authorId: string) {
 
 // Danh sách giải đấu cho FEED (mỗi giải = 1 thẻ). Kèm tác giả + tóm tắt số vòng/số ván
 // + tổng phiếu, để web render thẻ giải mà không cần nạp cả bảng phân nhánh.
-export async function listTournamentFeed(limit = 30, viewerId?: string) {
+export async function listTournamentFeed(limit = 30, viewerId?: string, onlyIds?: string[]) {
+  if (onlyIds && !onlyIds.length) return [];
   const tRows = await db
     .select({ t: tournaments, author: users })
     .from(tournaments)
     .leftJoin(users, eq(users.id, tournaments.authorId))
     // Giải của người đã chặn (2 chiều) / đã ẩn không lên feed (3 điều kiện theo tác giả).
-    .where(viewerId ? and(...feedExclusions(viewerId, tournaments.authorId, tournaments.id).slice(0, 3)) : undefined)
+    .where(and(
+      onlyIds ? inArray(tournaments.id, onlyIds) : undefined, // tìm kiếm: chỉ các giải khớp
+      ...(viewerId ? feedExclusions(viewerId, tournaments.authorId, tournaments.id).slice(0, 3) : []),
+    ))
     .orderBy(desc(tournaments.createdAt))
     .limit(limit);
   const ids = tRows.map((r) => r.t.id);
