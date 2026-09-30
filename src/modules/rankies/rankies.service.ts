@@ -150,6 +150,33 @@ export async function castVote(
   return { myVote, options };
 }
 
+/**
+ * Huỷ phiếu ("bấm lại để huỷ"): xoá phiếu của người dùng, trừ số phiếu/người vote của các
+ * lựa chọn đã chọn (ghi nhật ký cho dòng thời gian). Không có phiếu → không làm gì.
+ * Bình chọn không giới hạn (gõ nhiều lần) không huỷ được.
+ */
+export async function removeVote(userId: string, rankieId: string): Promise<{ myVote: null; options: RankieOptionView[] }> {
+  const [post] = await db
+    .select({ type: posts.type, votingType: posts.votingType, closesAt: posts.closesAt })
+    .from(posts)
+    .where(eq(posts.id, rankieId));
+  if (!post || post.type !== 'rankie') throw notFound('Rankie not found');
+  if (post.votingType === 'unlimited') throw badRequest('Không thể huỷ phiếu ở bình chọn không giới hạn');
+  if (post.closesAt && post.closesAt.getTime() <= Date.now()) throw forbidden('Voting for this Rankie has closed');
+
+  await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(votes)
+      .where(and(eq(votes.userId, userId), eq(votes.rankieId, rankieId)))
+      .for('update');
+    if (!existing) return;
+    for (const id of existing.optionIds) await bumpOption(tx, rankieId, id, -1, -1);
+    await tx.delete(votes).where(eq(votes.id, existing.id));
+  });
+  return { myVote: null, options: await fetchOptions(rankieId) };
+}
+
 async function bumpOption(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   rankieId: string,

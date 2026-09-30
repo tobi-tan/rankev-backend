@@ -22,6 +22,20 @@ export default async function rankiesRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
+  // DELETE /rankies/:id/vote — huỷ phiếu của mình ("bấm lại để huỷ")
+  app.delete<{ Params: { id: string } }>(
+    '/:id/vote',
+    { preHandler: authenticate },
+    async (req) => {
+      const result = await rankiesService.removeVote(requireUserId(req), req.params.id);
+      broadcastVoteUpdate(
+        req.params.id,
+        result.options.map((o) => ({ id: o.id, votes: o.votes, voters: o.voters })),
+      );
+      return result;
+    },
+  );
+
   // GET /rankies/:id/votes/me — current user's vote (or null)
   app.get<{ Params: { id: string } }>(
     '/:id/votes/me',

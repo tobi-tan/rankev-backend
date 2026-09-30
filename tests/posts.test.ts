@@ -118,6 +118,21 @@ describe('posts + rankie', () => {
     expect(opts.find((o: any) => o.id === b.id).votes).toBe(1);
   });
 
+  it('huỷ phiếu: trừ phiếu, xoá phiếu của mình, gọi lại vẫn an toàn', async () => {
+    const { accessToken } = await registerUser(app);
+    const rk = await createRankie(app, accessToken);
+    const [a] = rk.options;
+    await app.inject({ method: 'POST', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken), payload: { optionIds: [a.id] } });
+    const del = await app.inject({ method: 'DELETE', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken) });
+    expect(del.statusCode).toBe(200);
+    expect(del.json().options.find((o: any) => o.id === a.id)).toMatchObject({ votes: 0, voters: 0 });
+    const me = await app.inject({ method: 'GET', url: `/rankies/${rk.id}/votes/me`, headers: bearer(accessToken) });
+    expect(me.json().myVote).toBeNull();
+    const again = await app.inject({ method: 'DELETE', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken) });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().options.find((o: any) => o.id === a.id).votes).toBe(0);
+  });
+
   it('PATCH edits metadata for the owner and 403s for others', async () => {
     const owner = await registerUser(app);
     const other = await registerUser(app);
