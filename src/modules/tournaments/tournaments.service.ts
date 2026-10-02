@@ -106,7 +106,7 @@ async function createMatchRankie(
   const mk = (c: Contestant, i: number) => ({
     rankieId: post.id,
     label: c.name,
-    emoji: c.emoji ?? undefined,
+    emoji: c.imageUrl ? undefined : c.emoji ?? undefined, // có ảnh → bỏ emoji giữ chỗ
     color: c.color ?? OPT_COLORS[i % OPT_COLORS.length],
     imageUrl: c.imageUrl ?? undefined,
     refType: c.refType ?? undefined,
@@ -118,7 +118,10 @@ async function createMatchRankie(
 }
 
 export async function createTournament(authorId: string, input: CreateTournamentInput) {
-  const cs = input.contestants.filter((c) => c && c.name && c.name.trim());
+  // Đấu thủ có ẢNH thì bỏ emoji (web tự gán emoji giữ chỗ lúc thêm đấu thủ — không phải do người tạo chọn).
+  const cs = input.contestants
+    .filter((c) => c && c.name && c.name.trim())
+    .map((c) => (c.imageUrl ? { ...c, emoji: undefined } : c));
   if (cs.length < 2) throw badRequest('Cần ít nhất 2 đối thủ');
   if (cs.length > 32) throw badRequest('Tối đa 32 đối thủ');
 
@@ -332,7 +335,7 @@ async function applySettle(id: string): Promise<void> {
     for (const u of plan.optUpdates) {
       await tx
         .update(rankieOptions)
-        .set({ label: u.ref.name, imageUrl: u.ref.imageUrl ?? null, emoji: u.ref.emoji ?? null, color: u.ref.color ?? undefined })
+        .set({ label: u.ref.name, imageUrl: u.ref.imageUrl ?? null, emoji: u.ref.imageUrl ? null : u.ref.emoji ?? null, color: u.ref.color ?? undefined })
         .where(and(eq(rankieOptions.rankieId, u.postId), eq(rankieOptions.position, u.pos)));
     }
     for (const rt of plan.retitle) await tx.update(posts).set({ title: rt.title }).where(eq(posts.id, rt.postId));
@@ -529,7 +532,8 @@ export async function customizeMatch(
       ...ref,
       name: p.name !== undefined && p.name.trim() ? p.name.trim() : ref.name,
       imageUrl: p.imageUrl !== undefined ? p.imageUrl : ref.imageUrl,
-      emoji: p.emoji !== undefined ? p.emoji : ref.emoji,
+      // Đặt ảnh mới mà không chọn emoji → bỏ emoji cũ (ảnh luôn được ưu tiên hiển thị).
+      emoji: p.emoji !== undefined ? p.emoji : p.imageUrl ? null : ref.emoji,
       color: p.color !== undefined ? p.color : ref.color,
       desc: p.desc !== undefined ? p.desc : ref.desc, // #14
     };
@@ -544,7 +548,7 @@ export async function customizeMatch(
       if (!ref) return;
       await db
         .update(rankieOptions)
-        .set({ label: ref.name, imageUrl: ref.imageUrl ?? null, emoji: ref.emoji ?? null, color: ref.color ?? undefined })
+        .set({ label: ref.name, imageUrl: ref.imageUrl ?? null, emoji: ref.imageUrl ? null : ref.emoji ?? null, color: ref.color ?? undefined })
         .where(and(eq(rankieOptions.rankieId, m.rankiePostId!), eq(rankieOptions.position, pos)));
     };
     if (patch.a) await applyOpt(0, newA);

@@ -59,7 +59,7 @@ export async function createRankie(
       input.options.map((o, i) => ({
         rankieId: post.id,
         label: o.label,
-        emoji: o.emoji,
+        emoji: o.imageUrl ? null : o.emoji, // có ảnh → bỏ emoji giữ chỗ
         flag: o.flag,
         imageUrl: o.imageUrl,
         color: o.color,
@@ -281,7 +281,7 @@ export async function updatePost(
           await tx.insert(rankieOptions).values({
             rankieId: id,
             label: o.label,
-            emoji: o.emoji,
+            emoji: o.imageUrl ? null : o.emoji,
             flag: o.flag,
             imageUrl: o.imageUrl,
             color: o.color,

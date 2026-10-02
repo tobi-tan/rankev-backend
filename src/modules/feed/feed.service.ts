@@ -24,8 +24,17 @@ import { toPublicUser, type PublicUser } from '../users/users.serializer';
 export interface FeedOption {
   label: string | null;
   emoji: string | null;
+  /** ảnh của lựa chọn (ưu tiên hơn emoji khi hiển thị) */
+  imageUrl: string | null;
   votes: number;
   color: string | null;
+}
+
+/** Kết quả (ending) của Path để xem trước trên thẻ / ô lưới — không lộ nội dung câu hỏi. */
+export interface FeedEnding {
+  name: string;
+  emoji: string | null;
+  imageUrl: string | null;
 }
 
 export interface FeedSummary {
@@ -67,6 +76,8 @@ export interface FeedSummary {
   sharesCount: number;
   /** top options for rankie cards (sorted desc, up to 4) */
   options?: FeedOption[];
+  /** path: tối đa 3 kết quả (để ô lưới hồ sơ có hình khi bài không có ảnh bìa) */
+  endings?: FeedEnding[];
 }
 
 export interface FeedQuery {
@@ -89,12 +100,13 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
             rankieId: rankieOptions.rankieId,
             label: rankieOptions.label,
             emoji: rankieOptions.emoji,
+            imageUrl: rankieOptions.imageUrl,
             votes: rankieOptions.votes,
             color: rankieOptions.color,
           })
           .from(rankieOptions)
           .where(inArray(rankieOptions.rankieId, rankieIds))
-      : Promise.resolve([] as { rankieId: string; label: string | null; emoji: string | null; votes: number; color: string | null }[]),
+      : Promise.resolve([] as { rankieId: string; label: string | null; emoji: string | null; imageUrl: string | null; votes: number; color: string | null }[]),
     pathIds.length
       ? db
           .select({ id: pathEndings.postId, c: count() })
@@ -139,7 +151,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
     const a = rankieAgg.get(o.rankieId) ?? { total: 0, size: 0, top: [] };
     a.total += Number(o.votes);
     a.size += 1;
-    a.top.push({ label: o.label, emoji: o.emoji, votes: Number(o.votes), color: o.color });
+    a.top.push({ label: o.label, emoji: o.emoji, imageUrl: o.imageUrl, votes: Number(o.votes), color: o.color });
     rankieAgg.set(o.rankieId, a);
   }
   for (const a of rankieAgg.values()) {
@@ -148,6 +160,19 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   }
 
   const endsBy = new Map(pathEnds.map((r) => [r.id, Number(r.c)]));
+  // Xem trước kết quả Path (tên + emoji/ảnh, đông người nhất trước) — tối đa 3 mỗi bài.
+  const endingRows = pathIds.length
+    ? await db
+        .select({ postId: pathEndings.postId, name: pathEndings.name, emoji: pathEndings.emoji, imageUrl: pathEndings.imageUrl, count: pathEndings.count })
+        .from(pathEndings)
+        .where(inArray(pathEndings.postId, pathIds))
+    : [];
+  const endingsBy = new Map<string, FeedEnding[]>();
+  for (const e of [...endingRows].sort((x, y) => (y.count ?? 0) - (x.count ?? 0))) {
+    const list = endingsBy.get(e.postId) ?? [];
+    if (list.length < 3) list.push({ name: e.name, emoji: e.emoji, imageUrl: e.imageUrl });
+    endingsBy.set(e.postId, list);
+  }
   const pathQsBy = new Map(pathQs.map((r) => [r.id, Number(r.c)]));
   const qsBy = new Map(deckQs.map((r) => [r.id, Number(r.c)]));
   const partsBy = new Map(parts.map((r) => [r.id, Number(r.c)]));
@@ -217,6 +242,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       commentsCount: commentsBy.get(p.id) ?? 0,
       sharesCount: sharesBy.get(p.id) ?? 0,
       options: p.type === 'rankie' ? agg?.top ?? [] : undefined,
+      endings: p.type === 'path' ? endingsBy.get(p.id) ?? [] : undefined,
     };
   });
 }

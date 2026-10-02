@@ -70,7 +70,7 @@ export async function createPath(authorId: string, input: CreatePathInput): Prom
       await tx.insert(pathEndings).values({
         postId: post.id,
         name: e.name,
-        emoji: e.emoji,
+        emoji: e.imageUrl ? null : e.emoji, // có ảnh → bỏ emoji giữ chỗ
         imageUrl: e.imageUrl,
         comment: e.comment,
       });
@@ -86,7 +86,7 @@ export async function createPath(authorId: string, input: CreatePathInput): Prom
         await tx.insert(pathAnswers).values({
           questionId,
           label: a.label,
-          emoji: a.emoji,
+          emoji: a.imageUrl ? null : a.emoji,
           imageUrl: a.imageUrl,
           hotspotX: a.hotspotX?.toString(),
           hotspotY: a.hotspotY?.toString(),
@@ -166,7 +166,7 @@ export async function updatePath(id: string, authorId: string, input: CreatePath
       await tx.insert(pathEndings).values({
         postId: id,
         name: e.name,
-        emoji: e.emoji,
+        emoji: e.imageUrl ? null : e.emoji,
         imageUrl: e.imageUrl,
         comment: e.comment,
         count: countByName.get(e.name) ?? 0,
@@ -180,7 +180,7 @@ export async function updatePath(id: string, authorId: string, input: CreatePath
         await tx.insert(pathAnswers).values({
           questionId,
           label: a.label,
-          emoji: a.emoji,
+          emoji: a.imageUrl ? null : a.emoji,
           imageUrl: a.imageUrl,
           hotspotX: a.hotspotX?.toString(),
           hotspotY: a.hotspotY?.toString(),

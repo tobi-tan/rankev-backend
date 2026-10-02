@@ -118,6 +118,22 @@ describe('posts + rankie', () => {
     expect(opts.find((o: any) => o.id === b.id).votes).toBe(1);
   });
 
+  it('lựa chọn có ảnh thì không lưu emoji giữ chỗ; feed gửi kèm ảnh của lựa chọn', async () => {
+    const { accessToken } = await registerUser(app);
+    const img = 'https://example.com/cat.png';
+    const res = await app.inject({
+      method: 'POST', url: '/posts', headers: bearer(accessToken),
+      payload: { title: `EmojiDrop ${Date.now()}`, options: [{ label: 'Mèo', emoji: '🎯', imageUrl: img }, { label: 'Chó', emoji: '🐶' }] },
+    });
+    expect(res.statusCode).toBe(201);
+    const opts = res.json().options;
+    expect(opts.find((o: any) => o.label === 'Mèo')).toMatchObject({ emoji: null, imageUrl: img });
+    expect(opts.find((o: any) => o.label === 'Chó').emoji).toBe('🐶'); // không có ảnh → giữ emoji
+    const feed = (await app.inject({ method: 'GET', url: '/feed?limit=50', headers: bearer(accessToken) })).json();
+    const item = feed.items.find((i: any) => i.id === res.json().id);
+    expect(item.options.find((o: any) => o.label === 'Mèo')).toMatchObject({ emoji: null, imageUrl: img });
+  });
+
   it('huỷ phiếu: trừ phiếu, xoá phiếu của mình, gọi lại vẫn an toàn', async () => {
     const { accessToken } = await registerUser(app);
     const rk = await createRankie(app, accessToken);

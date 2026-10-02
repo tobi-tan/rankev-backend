@@ -52,7 +52,7 @@ export async function createDeck(authorId: string, input: CreateDeckInput): Prom
         await tx.insert(deckOptions).values({
           questionId: qRow.id,
           label: o.label,
-          emoji: o.emoji,
+          emoji: o.imageUrl ? null : o.emoji, // có ảnh → bỏ emoji giữ chỗ
           imageUrl: o.imageUrl,
           correct: o.correct ?? false,
           position: j,
@@ -105,7 +105,7 @@ export async function updateDeck(id: string, authorId: string, input: CreateDeck
         await tx.insert(deckOptions).values({
           questionId: qRow.id,
           label: o.label,
-          emoji: o.emoji,
+          emoji: o.imageUrl ? null : o.emoji, // có ảnh → bỏ emoji giữ chỗ
           imageUrl: o.imageUrl,
           correct: o.correct ?? false,
           position: j,

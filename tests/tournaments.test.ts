@@ -45,10 +45,11 @@ describe('tournaments', () => {
     expect(post.caption).toBe('Ai vĩ đại nhất?');
     expect(post.allowGuestPresent).toBe(true);
     expect(post.closesAt).toBeTruthy();
-    // Đối thủ Messi mang ảnh + emoji đã đặt.
+    // Đối thủ Messi mang ảnh; có ảnh thì KHÔNG lưu emoji (web tự gán emoji giữ chỗ khi thêm đấu
+    // thủ — quy tắc 0031: ảnh luôn thắng, emoji chỉ dùng khi không có ảnh).
     const messi = post.options.find((o: any) => o.label === 'Messi');
     expect(messi.imageUrl).toBe('https://example.com/messi.png');
-    expect(messi.emoji).toBe('🐐');
+    expect(messi.emoji).toBeNull();
 
     // Mỗi giải TỰ là một series: ván (rankie) thuộc series tên = tên giải.
     expect(post.seriesName).toBe('GOAT?');
