@@ -71,7 +71,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   }
 
   await app.register(websocket);
-  await app.register(multipart, { limits: { fileSize: 8 * 1024 * 1024 } });
+  await app.register(multipart, { limits: { fileSize: 40 * 1024 * 1024 } }); // video ≤40MB; ảnh tự giới hạn 8MB (uploads.routes)
   // Serve uploaded files. Local disk in dev; swap for S3/CDN in production.
   mkdirSync(UPLOAD_DIR, { recursive: true });
   await app.register(fastifyStatic, { root: UPLOAD_DIR, prefix: '/uploads/', decorateReply: false });

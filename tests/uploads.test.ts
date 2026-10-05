@@ -67,3 +67,21 @@ describe('uploads', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('uploads video', () => {
+  it('nhận video mp4 ở /uploads/video, từ chối video gửi vào /uploads/image và ảnh > 8MB', async () => {
+    const { accessToken } = await registerUser(app);
+    const vid = multipart(Buffer.from('fake-mp4-bytes'), 'video/mp4', 'clip.mp4');
+    const ok = await app.inject({ method: 'POST', url: '/uploads/video', headers: { ...bearer(accessToken), 'content-type': vid.contentType }, payload: vid.body });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().url).toContain('/uploads/video/');
+
+    const wrong = multipart(Buffer.from('fake-mp4-bytes'), 'video/mp4', 'clip.mp4');
+    const bad = await app.inject({ method: 'POST', url: '/uploads/image', headers: { ...bearer(accessToken), 'content-type': wrong.contentType }, payload: wrong.body });
+    expect(bad.statusCode).toBe(400);
+
+    const big = multipart(Buffer.alloc(9 * 1024 * 1024, 1), 'image/png', 'big.png');
+    const tooBig = await app.inject({ method: 'POST', url: '/uploads/image', headers: { ...bearer(accessToken), 'content-type': big.contentType }, payload: big.body });
+    expect(tooBig.statusCode).toBe(400);
+  });
+});
