@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
 import { createTournamentSchema, customizeMatchSchema, setContestantDescSchema, setMatchResultSchema, setMatchScheduleSchema } from './tournaments.schemas';
+import { notifyNewPost } from '../notifications/notifications.service';
 import * as tournaments from './tournaments.service';
 import { createCommentSchema, listCommentsQuerySchema } from '../comments/comments.schemas';
 import * as commentsSvc from '../comments/comments.service';
@@ -10,7 +11,11 @@ export default async function tournamentsRoutes(app: FastifyInstance): Promise<v
   // POST /tournaments — tạo giải đấu (mỗi ván vòng đầu là 1 Rankie 1v1 thật)
   app.post('/', { preHandler: authenticate }, async (req) => {
     const body = parse(createTournamentSchema, req.body);
-    return tournaments.createTournament(requireUserId(req), body);
+    const uid = requireUserId(req);
+    const created = await tournaments.createTournament(uid, body);
+    const tid = (created as { id?: string })?.id;
+    if (tid) notifyNewPost(uid, { tournamentId: tid }).catch(() => {});
+    return created;
   });
 
   // GET /tournaments — danh sách giải đấu cho feed (công khai, mỗi giải = 1 thẻ)

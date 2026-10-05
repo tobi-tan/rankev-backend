@@ -59,3 +59,32 @@ describe('profile theo handle + @nhắc tên', () => {
     expect(cnt2.json().count).toBe(0);
   });
 });
+
+describe('thông báo bài mới', () => {
+  it('báo cho người RankUp tầng Yêu thích/Fan cuồng; không báo tầng Quan tâm hay người đã ẩn', async () => {
+    const author = await registerUser(app);
+    const lover = await registerUser(app);   // tầng 2 → nhận
+    const casual = await registerUser(app);  // tầng 1 → không nhận
+    const muter = await registerUser(app);   // tầng 3 nhưng đã ẩn tác giả → không nhận
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/rankup`, headers: bearer(lover.accessToken), payload: { tier: 2 } });
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/rankup`, headers: bearer(casual.accessToken), payload: { tier: 1 } });
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/rankup`, headers: bearer(muter.accessToken), payload: { tier: 3 } });
+    await app.inject({ method: 'POST', url: `/users/${author.user.id}/mute`, headers: bearer(muter.accessToken) });
+
+    const rk = await createRankie(app, author.accessToken);
+    await new Promise((r) => setTimeout(r, 150)); // gửi thông báo chạy nền sau khi trả 201
+
+    const got = (await app.inject({ method: 'GET', url: '/notifications', headers: bearer(lover.accessToken) })).json();
+    const items = got.items ?? got;
+    const np = items.find((n: { type: string }) => n.type === 'new_post');
+    expect(np).toBeTruthy();
+    expect(np.postId).toBe(rk.id);
+    expect(np.targetType).toBe('rankie');
+    expect(np.actor.id).toBe(author.user.id);
+
+    for (const u of [casual, muter]) {
+      const l = (await app.inject({ method: 'GET', url: '/notifications', headers: bearer(u.accessToken) })).json();
+      expect((l.items ?? l).some((n: { type: string }) => n.type === 'new_post')).toBe(false);
+    }
+  });
+});

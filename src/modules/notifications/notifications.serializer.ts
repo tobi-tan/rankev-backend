@@ -8,6 +8,7 @@ export interface NotificationView {
   tournamentId: string | null;
   commentId: string | null;
   targetTitle: string | null; // tiêu đề bài/giải để hiển thị
+  targetType: string | null; // rankie | path | deck | tournament — để app mở đúng màn
   text: string | null;
   read: boolean;
   createdAt: string;
@@ -28,6 +29,7 @@ export function toNotificationView(
   n: NotificationRow,
   actor: PublicUser | null,
   targetTitle: string | null,
+  targetType: string | null = null,
 ): NotificationView {
   return {
     id: n.id,
@@ -37,6 +39,7 @@ export function toNotificationView(
     tournamentId: n.tournamentId,
     commentId: n.commentId,
     targetTitle,
+    targetType,
     text: n.text,
     read: n.readAt !== null,
     createdAt: n.createdAt.toISOString(),

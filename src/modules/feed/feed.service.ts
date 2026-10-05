@@ -13,6 +13,7 @@ import {
   seriesPosts,
   tournamentMatches,
   tournaments,
+  rankUps,
   type Post,
   type User,
 } from '../../db/schema';
@@ -74,6 +75,8 @@ export interface FeedSummary {
   commentsCount: number;
   /** số lượt gửi bài này qua tin nhắn (thanh tương tác: chia sẻ) */
   sharesCount: number;
+  /** Tổng số người đã RankUp TÁC GIẢ (mọi tầng) — hiện cạnh nút RankUp trên thẻ feed. */
+  authorRankUps: number;
   /** top options for rankie cards (sorted desc, up to 4) */
   options?: FeedOption[];
   /** path: tối đa 3 kết quả (để ô lưới hồ sơ có hình khi bài không có ảnh bìa) */
@@ -188,6 +191,13 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
     : [];
   const seriesBy = new Map(seriesRows.map((r) => [r.postId, { seriesId: r.seriesId, seriesName: r.name }]));
 
+  // Tổng RankUp của từng tác giả (mọi tầng) — 1 truy vấn gộp cho cả trang feed.
+  const authorIds = [...new Set(rows.map((r) => r.author?.id).filter((x): x is string => !!x))];
+  const rankRows = authorIds.length
+    ? await db.select({ authorId: rankUps.authorId, c: sql<number>`count(*)::int` }).from(rankUps).where(inArray(rankUps.authorId, authorIds)).groupBy(rankUps.authorId)
+    : [];
+  const rankBy = new Map(rankRows.map((r) => [r.authorId, Number(r.c)]));
+
   // Bài nào là TRẬN của giải đấu → gắn giải (để feed hiện nhãn "🏆 Giải", và KHÔNG coi là series).
   const matchRows = allIds.length
     ? await db
@@ -241,6 +251,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       size,
       commentsCount: commentsBy.get(p.id) ?? 0,
       sharesCount: sharesBy.get(p.id) ?? 0,
+      authorRankUps: r.author ? rankBy.get(r.author.id) ?? 0 : 0,
       options: p.type === 'rankie' ? agg?.top ?? [] : undefined,
       endings: p.type === 'path' ? endingsBy.get(p.id) ?? [] : undefined,
     };

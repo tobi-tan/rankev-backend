@@ -3,6 +3,7 @@ import { parse } from '../../lib/validate';
 import { badRequest } from '../../lib/errors';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
 import { createRankieSchema, listPostsQuerySchema, updatePostSchema } from './posts.schemas';
+import { notifyNewPost } from '../notifications/notifications.service';
 import * as postsService from './posts.service';
 import { createPathSchema } from '../paths/paths.schemas';
 import * as pathsService from '../paths/paths.service';
@@ -32,15 +33,15 @@ export default async function postsRoutes(app: FastifyInstance): Promise<void> {
 
     if (type === 'path') {
       const body = parse(createPathSchema, req.body);
-      return reply.code(201).send(await pathsService.createPath(userId, body));
+      { const v = await pathsService.createPath(userId, body); notifyNewPost(userId, { postId: v.id }).catch(() => {}); return reply.code(201).send(v); }
     }
     if (type === 'deck') {
       const body = parse(createDeckSchema, req.body);
-      return reply.code(201).send(await decksService.createDeck(userId, body));
+      { const v = await decksService.createDeck(userId, body); notifyNewPost(userId, { postId: v.id }).catch(() => {}); return reply.code(201).send(v); }
     }
     if (type === 'rankie') {
       const body = parse(createRankieSchema, req.body);
-      return reply.code(201).send(await postsService.createRankie(userId, body));
+      { const v = await postsService.createRankie(userId, body); notifyNewPost(userId, { postId: v.id }).catch(() => {}); return reply.code(201).send(v); }
     }
     throw badRequest(`Unsupported post type "${type}"`);
   });
