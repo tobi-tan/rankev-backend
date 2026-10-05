@@ -28,6 +28,8 @@ export const createDeckSchema = z.object({
   examDurationMinutes: z.number().int().positive().optional(),
   passingScore: z.number().min(0).optional(),
   allowGuestPresent: z.boolean().optional(),
+  tags: z.array(z.string().max(60)).max(20).optional(), // hashtag (trước bị bỏ qua)
+  visibility: z.enum(['public', 'unlisted', 'private']).optional(), // quyền riêng tư lúc đăng
   questions: z.array(deckQuestionSchema).min(1).max(100),
 });
 

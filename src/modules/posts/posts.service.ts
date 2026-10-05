@@ -9,7 +9,7 @@ import { countSharesOne } from '../messaging/shares';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 import { toRankieView, type RankieView } from './posts.serializer';
 import { getPostSeries } from '../series/series.service';
-import { normalizeTags } from '../../lib/tags';
+import { extractHashtags, normalizeTags, tagsFor } from '../../lib/tags';
 import type { CreateRankieInput, ListPostsQuery } from './posts.schemas';
 
 async function fetchAuthor(authorId: string): Promise<PublicUser | null> {
@@ -43,7 +43,8 @@ export async function createRankie(
         subtitle: input.subtitle,
         caption: input.caption,
         category: input.category,
-        tags: normalizeTags(input.tags ?? (input.category ? [input.category] : [])),
+        tags: tagsFor(input.tags, input.caption, input.category),
+        visibility: input.visibility ?? 'public',
         media: input.media,
         opensAt: input.opensAt ?? null,
         closesAt: input.closesAt,
@@ -219,7 +220,7 @@ export async function updatePost(
   input: import('./posts.schemas').UpdatePostInput,
 ): Promise<'rankie' | 'path' | 'deck'> {
   const [post] = await db
-    .select({ authorId: posts.authorId, type: posts.type })
+    .select({ authorId: posts.authorId, type: posts.type, caption: posts.caption, tags: posts.tags })
     .from(posts)
     .where(eq(posts.id, id));
   if (!post) throw notFound('Post not found');
@@ -248,7 +249,15 @@ export async function updatePost(
   ] as const) {
     if (input[k] !== undefined) patch[k] = input[k];
   }
-  if (input.tags !== undefined) patch.tags = normalizeTags(input.tags ?? []);
+  // Tag = tag chọn + #hashtag trong mô tả (đổi một trong hai → tính lại).
+  if (input.tags !== undefined || input.caption !== undefined) {
+    // Không gửi tag mới → giữ tag tự chọn, bỏ các tag do #hashtag của MÔ TẢ CŨ sinh ra.
+    const oldFromCaption = new Set(extractHashtags(post.caption).map((t) => t.toLowerCase()));
+    const baseTags = input.tags !== undefined
+      ? input.tags ?? []
+      : ((post.tags as string[] | null) ?? []).filter((t) => !oldFromCaption.has(t.toLowerCase()));
+    patch.tags = tagsFor(baseTags, input.caption !== undefined ? input.caption : post.caption);
+  }
 
   await db.transaction(async (tx) => {
     if (Object.keys(patch).length > 0) {

@@ -38,6 +38,8 @@ export const createPathSchema = z.object({
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).default('hidden'),
   hideEndingCount: z.boolean().optional().default(false),
   allowGuestPresent: z.boolean().optional(), // cho phép người khác trình chiếu
+  tags: z.array(z.string().max(60)).max(20).optional(), // hashtag (trước bị bỏ qua)
+  visibility: z.enum(['public', 'unlisted', 'private']).optional(), // quyền riêng tư lúc đăng
   questions: z.array(pathQuestionSchema).min(1).max(50),
   endings: z.array(pathEndingSchema).min(1).max(50),
 });

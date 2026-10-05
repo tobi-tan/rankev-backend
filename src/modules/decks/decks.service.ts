@@ -1,4 +1,5 @@
 import { and, avg, count, eq, inArray } from 'drizzle-orm';
+import { tagsFor } from '../../lib/tags';
 import { db } from '../../db';
 import {
   posts,
@@ -30,6 +31,8 @@ export async function createDeck(authorId: string, input: CreateDeckInput): Prom
         examDurationMinutes: input.examDurationMinutes,
         passingScore: input.passingScore?.toString(),
         allowGuestPresent: input.allowGuestPresent ?? false,
+        tags: tagsFor(input.tags, input.caption, input.category),
+        visibility: input.visibility ?? 'public',
       })
       .returning({ id: posts.id });
 
@@ -89,6 +92,7 @@ export async function updateDeck(id: string, authorId: string, input: CreateDeck
         examDurationMinutes: input.examDurationMinutes,
         passingScore: input.passingScore?.toString(),
         allowGuestPresent: input.allowGuestPresent ?? false,
+        tags: tagsFor(input.tags, input.caption, input.category),
       })
       .where(eq(posts.id, id));
 

@@ -46,6 +46,7 @@ export const createRankieSchema = z.object({
   live: z.boolean().optional().default(false),
   sponsored: z.boolean().optional().default(false),
   allowGuestPresent: z.boolean().optional(), // cho phép người khác trình chiếu bài này
+  visibility: z.enum(['public', 'unlisted', 'private']).optional(), // quyền riêng tư lúc đăng
   votingType: z.enum(['single', 'multiple', 'rating', 'unlimited']).default('single'),
   chartType: z.enum(['bar', 'pie', 'head_to_head', 'hh_classic', 'h2h_bar', 'tug', 'beam', 'podium']).default('bar'),
   voteMarker: voteMarkerSchema,

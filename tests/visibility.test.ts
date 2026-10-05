@@ -85,3 +85,24 @@ describe('quyền xem bài (riêng tư / ẩn / xoá / chặn)', () => {
     expect(n.items.some((x: { type: string }) => x.type === 'new_post')).toBe(false);
   });
 });
+
+describe('hashtag + quyền riêng tư lúc đăng', () => {
+  it('#hashtag trong mô tả thành tag; Path/Survey cũng lưu tag; tạo bài "chỉ mình tôi" ngay từ đầu', async () => {
+    const u = await registerUser(app);
+    const other = await registerUser(app);
+    const rk = await createRankie(app, u.accessToken, { caption: 'Chọn đi #caphe #SàiGòn nhé', tags: ['nhanh'] });
+    expect(rk.tags).toEqual(['nhanh', 'caphe', 'SàiGòn']);
+    const path = (await app.inject({ method: 'POST', url: '/posts', headers: bearer(u.accessToken), payload: {
+      type: 'path', title: 'P', caption: 'thử #duLich', tags: ['vui'],
+      questions: [{ key: 'q1', text: '?', isEntry: true, answers: [{ label: 'a', targetType: 'ending', targetKey: 'E1' }, { label: 'b', targetType: 'ending', targetKey: 'E2' }] }],
+      endings: [{ name: 'E1' }, { name: 'E2' }],
+    } })).json();
+    const mine = (await app.inject({ method: 'GET', url: '/users/me/posts', headers: bearer(u.accessToken) })).json();
+    expect(mine.items.find((x: { id: string }) => x.id === path.id)?.tags).toEqual(['vui', 'duLich']);
+    const priv = await createRankie(app, u.accessToken, { title: 'Riêng tư từ đầu', visibility: 'private' });
+    expect((await app.inject({ method: 'GET', url: `/posts/${priv.id}`, headers: bearer(other.accessToken) })).statusCode).toBe(404);
+    // sửa mô tả → tag cập nhật theo
+    const ed = (await app.inject({ method: 'PATCH', url: `/posts/${rk.id}`, headers: bearer(u.accessToken), payload: { caption: 'đổi #trasua' } })).json();
+    expect(ed.tags).toEqual(['nhanh', 'trasua']);
+  });
+});

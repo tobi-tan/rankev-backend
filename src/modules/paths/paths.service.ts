@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { tagsFor } from '../../lib/tags';
 import { db } from '../../db';
 import {
   posts,
@@ -45,6 +46,8 @@ export async function createPath(authorId: string, input: CreatePathInput): Prom
         revealMode: input.revealMode,
         hideEndingCount: input.hideEndingCount,
         allowGuestPresent: input.allowGuestPresent ?? false,
+        tags: tagsFor(input.tags, input.caption, input.category),
+        visibility: input.visibility ?? 'public',
       })
       .returning({ id: posts.id });
 
@@ -139,6 +142,7 @@ export async function updatePath(id: string, authorId: string, input: CreatePath
         revealMode: input.revealMode,
         hideEndingCount: input.hideEndingCount,
         allowGuestPresent: input.allowGuestPresent ?? false,
+        tags: tagsFor(input.tags, input.caption, input.category),
       })
       .where(eq(posts.id, id));
 
