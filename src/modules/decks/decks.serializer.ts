@@ -28,6 +28,9 @@ export interface DeckResult {
   detail: string | null;
   answers: unknown;
   participatedAt: string;
+  /** Tổng điểm tối đa của bài thi + điểm quy về THANG 10 (app hiển thị "x/10"). */
+  maxScore?: number | null;
+  score10?: number | null;
 }
 
 export interface DeckView {
@@ -53,9 +56,15 @@ export interface DeckView {
   myResult?: DeckResult | null;
 }
 
-export function toDeckResult(p: Participation): DeckResult {
+export const toScore10 = (score: number | null, maxScore: number | null | undefined) =>
+  score == null || !maxScore ? null : Math.round((score / maxScore) * 100) / 10;
+
+export function toDeckResult(p: Participation, maxScore?: number | null): DeckResult {
+  const score = p.score === null ? null : Number(p.score);
   return {
-    score: p.score === null ? null : Number(p.score),
+    score,
+    maxScore: maxScore ?? null,
+    score10: toScore10(score, maxScore),
     correctCount: p.correctCount,
     totalGradable: p.totalGradable,
     detail: p.detail,
@@ -113,6 +122,9 @@ export function toDeckView(
     allowGuestPresent: post.allowGuestPresent,
     questions: qViews,
   };
-  if (myResult !== undefined) view.myResult = myResult ? toDeckResult(myResult) : null;
+  if (myResult !== undefined) {
+    const maxScore = questions.reduce((t, q) => t + (Number(q.points) > 0 ? Number(q.points) : 0), 0);
+    view.myResult = myResult ? toDeckResult(myResult, maxScore || null) : null;
+  }
   return view;
 }

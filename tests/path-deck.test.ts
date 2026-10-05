@@ -109,3 +109,26 @@ describe('deck exam grading', () => {
     expect(res.json().score).toBeNull();
   });
 });
+
+describe('điểm thi quy về thang 10', () => {
+  it('bài 20 điểm: làm đúng 3/4 → score 15, score10 7.5; thống kê có phân bố điểm thang 10', async () => {
+    const owner = await registerUser(app);
+    const a = await registerUser(app);
+    const b = await registerUser(app);
+    const ex = await createExam(app, owner.accessToken, {
+      questions: [1, 2, 3, 4].map((i) => ({ text: `Câu ${i}`, votingType: 'single', points: 5, options: [{ label: 'Đúng', correct: true }, { label: 'Sai' }] })),
+    });
+    const ans = (n: number) => Object.fromEntries(ex.questions.map((q: any, i: number) => [q.id, q.options.find((o: any) => o.label === (i < n ? 'Đúng' : 'Sai')).id]));
+    const r1 = (await app.inject({ method: 'POST', url: `/decks/${ex.id}/submit`, headers: bearer(a.accessToken), payload: { answers: ans(3) } })).json();
+    expect(r1.score).toBe(15);
+    expect(r1.maxScore).toBe(20);
+    expect(r1.score10).toBe(7.5);
+    await app.inject({ method: 'POST', url: `/decks/${ex.id}/submit`, headers: bearer(b.accessToken), payload: { answers: ans(4) } });
+    const mine = (await app.inject({ method: 'GET', url: `/decks/${ex.id}/my-result`, headers: bearer(a.accessToken) })).json();
+    expect(mine.result.score10).toBe(7.5);
+    const st = (await app.inject({ method: 'GET', url: `/decks/${ex.id}/stats` })).json();
+    expect(st.participants).toBe(2);
+    expect(st.avgScore10).toBe(8.8); // (15+20)/2 = 17.5 → 8.75 → 8.8
+    expect([...st.scores10].sort()).toEqual([10, 7.5]);
+  });
+});

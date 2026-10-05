@@ -12,7 +12,14 @@ import {
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { getPostSeries } from '../series/series.service';
 import { countSharesOne } from '../messaging/shares';
-import { toDeckResult, toDeckView, type DeckResult, type DeckView } from './decks.serializer';
+import { toDeckResult, toDeckView, toScore10, type DeckResult, type DeckView } from './decks.serializer';
+
+/** Tổng điểm tối đa của một bài thi (các câu có điểm > 0). */
+async function examMaxScore(postId: string): Promise<number | null> {
+  const qs = await db.select({ points: deckQuestions.points }).from(deckQuestions).where(eq(deckQuestions.postId, postId));
+  const m = qs.reduce((t, q) => t + (Number(q.points) > 0 ? Number(q.points) : 0), 0);
+  return m > 0 ? m : null;
+}
 import type { CreateDeckInput, SubmitDeckInput } from './decks.schemas';
 
 export async function createDeck(authorId: string, input: CreateDeckInput): Promise<DeckView> {
@@ -186,6 +193,7 @@ export async function submitDeck(
   }
 
   let score: number | null = null;
+  let maxScoreOut: number | null = null;
   let correctCount: number | null = null;
   let totalGradable: number | null = null;
   let detail: string;
@@ -211,6 +219,7 @@ export async function submitDeck(
       }
     }
     score = Math.round(s * 10) / 10;
+    maxScoreOut = maxScore > 0 ? maxScore : null;
     correctCount = correct;
     totalGradable = gradable;
     detail = `${score}/${Math.round(maxScore * 10) / 10} · ${correct}/${gradable} câu đúng`;
@@ -245,7 +254,7 @@ export async function submitDeck(
     })
     .returning();
 
-  return toDeckResult(row);
+  return toDeckResult(row, maxScoreOut);
 }
 
 export async function getMyResult(userId: string, postId: string): Promise<DeckResult | null> {
@@ -253,12 +262,17 @@ export async function getMyResult(userId: string, postId: string): Promise<DeckR
     .select()
     .from(participations)
     .where(and(eq(participations.userId, userId), eq(participations.postId, postId)));
-  return p ? toDeckResult(p) : null;
+  if (!p) return null;
+  return toDeckResult(p, p.deckMode === 'exam' ? await examMaxScore(postId) : null);
 }
 
 export async function getStats(postId: string): Promise<{
   participants: number;
   avgScore: number | null;
+  maxScore?: number | null;
+  avgScore10?: number | null;
+  /** điểm (thang 10) của từng người đã làm — ẩn danh, để vẽ phân bố điểm thật */
+  scores10?: number[];
 }> {
   const [post] = await db
     .select({ id: posts.id, type: posts.type, deckMode: posts.deckMode })
@@ -271,12 +285,17 @@ export async function getStats(postId: string): Promise<{
     .from(participations)
     .where(eq(participations.postId, postId));
 
+  const avgRaw = post.deckMode === 'exam' && row?.avgScore != null ? Math.round(Number(row.avgScore) * 10) / 10 : null;
+  if (post.deckMode !== 'exam') return { participants: Number(row?.participants ?? 0), avgScore: null };
+  const maxScore = await examMaxScore(postId);
+  const all = await db.select({ score: participations.score }).from(participations).where(eq(participations.postId, postId)).limit(2000);
+  const scores10 = all.map((r) => toScore10(r.score === null ? null : Number(r.score), maxScore)).filter((x): x is number => x != null);
   return {
     participants: Number(row?.participants ?? 0),
-    avgScore:
-      post.deckMode === 'exam' && row?.avgScore != null
-        ? Math.round(Number(row.avgScore) * 10) / 10
-        : null,
+    avgScore: avgRaw,
+    maxScore,
+    avgScore10: toScore10(avgRaw, maxScore),
+    scores10,
   };
 }
 
