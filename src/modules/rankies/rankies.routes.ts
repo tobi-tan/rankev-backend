@@ -4,6 +4,7 @@ import { authenticate, requireUserId } from '../../plugins/auth';
 import { broadcastVoteUpdate } from '../../realtime/hub';
 import { voteSchema } from './rankies.schemas';
 import * as rankiesService from './rankies.service';
+import { assertPostAccess } from '../posts/access';
 
 export default async function rankiesRoutes(app: FastifyInstance): Promise<void> {
   // POST /rankies/:id/vote — cast/replace this user's vote
@@ -12,6 +13,7 @@ export default async function rankiesRoutes(app: FastifyInstance): Promise<void>
     { preHandler: authenticate },
     async (req) => {
       const body = parse(voteSchema, req.body);
+      await assertPostAccess(req.params.id, requireUserId(req));
       const result = await rankiesService.castVote(requireUserId(req), req.params.id, body);
       // Fan out fresh tallies to WebSocket subscribers of this rankie.
       broadcastVoteUpdate(
@@ -27,6 +29,7 @@ export default async function rankiesRoutes(app: FastifyInstance): Promise<void>
     '/:id/vote',
     { preHandler: authenticate },
     async (req) => {
+      await assertPostAccess(req.params.id, requireUserId(req));
       const result = await rankiesService.removeVote(requireUserId(req), req.params.id);
       broadcastVoteUpdate(
         req.params.id,

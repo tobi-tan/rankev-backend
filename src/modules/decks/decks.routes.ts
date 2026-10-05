@@ -3,6 +3,7 @@ import { parse } from '../../lib/validate';
 import { authenticate, requireUserId } from '../../plugins/auth';
 import { submitDeckSchema } from './decks.schemas';
 import * as decks from './decks.service';
+import { assertPostAccess } from '../posts/access';
 
 export default async function decksRoutes(app: FastifyInstance): Promise<void> {
   // POST /decks/:id/submit
@@ -11,6 +12,7 @@ export default async function decksRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: authenticate },
     async (req) => {
       const body = parse(submitDeckSchema, req.body);
+      await assertPostAccess(req.params.id, requireUserId(req));
       return decks.submitDeck(requireUserId(req), req.params.id, body);
     },
   );

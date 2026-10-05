@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { listablePostCond } from './access';
 import { db } from '../../db';
 import { bookmarks, posts, rankieOptions, users, votes, tournaments, tournamentMatches, type RankieOption } from '../../db/schema';
 import { forbidden, notFound } from '../../lib/errors';
@@ -135,7 +136,7 @@ export async function listRankies(
   query: ListPostsQuery,
   viewerId?: string,
 ): Promise<{ items: RankieView[]; nextCursor: string | null }> {
-  const conditions = [eq(posts.type, query.type), isNull(posts.deletedAt)];
+  const conditions = [eq(posts.type, query.type), isNull(posts.deletedAt), listablePostCond(viewerId)];
   if (query.category) conditions.push(eq(posts.category, query.category));
 
   // Bỏ bài của người đã chặn (2 chiều) / đã ẩn, và bài "Không quan tâm".
@@ -241,6 +242,9 @@ export async function updatePost(
     'chartType',
     'revealMode',
     'hideEndingCount',
+    'visibility',
+    'pinned',
+    'hidden',
   ] as const) {
     if (input[k] !== undefined) patch[k] = input[k];
   }

@@ -4,7 +4,8 @@ import { db } from '../../db';
 import { users } from '../../db/schema';
 import { notFound } from '../../lib/errors';
 import { parse } from '../../lib/validate';
-import { authenticate, requireUserId } from '../../plugins/auth';
+import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
+import { isBlockedBetween } from '../moderation/moderation.service';
 import { getMyRankUps, getRankUpCounts } from '../rankups/rankups.service';
 import { toPublicUser } from './users.serializer';
 import { updateProfileSchema } from './users.schemas';
@@ -68,8 +69,11 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /users/:id/posts — a user's public posts
-  app.get<{ Params: { id: string } }>('/:id/posts', async (req) => {
-    const items = await usersService.getUserPosts(req.params.id);
+  app.get<{ Params: { id: string } }>('/:id/posts', { preHandler: optionalAuth }, async (req) => {
+    const viewerId = req.user?.id;
+    // Hai bên chặn nhau → không xem được bài trên hồ sơ.
+    if (viewerId && viewerId !== req.params.id && (await isBlockedBetween(viewerId, req.params.id))) return { items: [] };
+    const items = await usersService.getUserPosts(req.params.id, false, viewerId);
     return { items };
   });
 }

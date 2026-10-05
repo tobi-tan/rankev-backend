@@ -3,6 +3,7 @@ import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
 import { completePathSchema } from './paths.schemas';
 import * as paths from './paths.service';
+import { assertPostAccess } from '../posts/access';
 
 export default async function pathsRoutes(app: FastifyInstance): Promise<void> {
   // POST /paths/:id/complete
@@ -11,6 +12,7 @@ export default async function pathsRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: authenticate },
     async (req) => {
       const body = parse(completePathSchema, req.body);
+      await assertPostAccess(req.params.id, requireUserId(req));
       return paths.completePath(requireUserId(req), req.params.id, body);
     },
   );

@@ -6,6 +6,8 @@ import { notFound } from '../../lib/errors';
 import { authenticate, requireUserId } from '../../plugins/auth';
 import { summariesByIds } from '../feed/feed.service';
 
+import { assertPostAccess } from '../posts/access';
+
 export default async function bookmarksRoutes(app: FastifyInstance): Promise<void> {
   // GET /users/me/bookmarks — summaries of all bookmarked content (any type)
   app.get('/users/me/bookmarks', { preHandler: authenticate }, async (req) => {
@@ -26,8 +28,7 @@ export default async function bookmarksRoutes(app: FastifyInstance): Promise<voi
     '/posts/:id/bookmark',
     { preHandler: authenticate },
     async (req, reply) => {
-      const [p] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, req.params.id));
-      if (!p) throw notFound('Post not found');
+      await assertPostAccess(req.params.id, requireUserId(req));
       await db
         .insert(bookmarks)
         .values({ userId: requireUserId(req), postId: req.params.id })

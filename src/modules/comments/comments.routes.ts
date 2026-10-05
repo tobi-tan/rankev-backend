@@ -8,6 +8,7 @@ import {
   rankCommentSchema,
 } from './comments.schemas';
 import * as svc from './comments.service';
+import { assertPostAccess } from '../posts/access';
 
 export default async function commentsRoutes(app: FastifyInstance): Promise<void> {
   // GET /posts/:id/comments?parentId=&cursor=&limit=
@@ -16,6 +17,7 @@ export default async function commentsRoutes(app: FastifyInstance): Promise<void
     { preHandler: optionalAuth },
     async (req) => {
       const query = parse(listCommentsQuerySchema, req.query);
+      await assertPostAccess(req.params.id, req.user?.id);
       return svc.listComments(req.params.id, query, req.user?.id);
     },
   );
@@ -26,6 +28,7 @@ export default async function commentsRoutes(app: FastifyInstance): Promise<void
     { preHandler: authenticate },
     async (req, reply) => {
       const body = parse(createCommentSchema, req.body);
+      await assertPostAccess(req.params.id, requireUserId(req));
       const comment = await svc.createComment(requireUserId(req), req.params.id, body);
       broadcastNewComment(req.params.id, comment);
       return reply.code(201).send(comment);

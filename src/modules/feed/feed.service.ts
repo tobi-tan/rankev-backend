@@ -19,6 +19,7 @@ import {
 } from '../../db/schema';
 import { decodeCursor, encodeCursor } from '../../lib/cursor';
 import { feedExclusions } from '../moderation/moderation.service';
+import { listablePostCond } from '../posts/access';
 import { countShares } from '../messaging/shares';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 
@@ -75,6 +76,9 @@ export interface FeedSummary {
   commentsCount: number;
   /** số lượt gửi bài này qua tin nhắn (thanh tương tác: chia sẻ) */
   sharesCount: number;
+  visibility: string; // public | unlisted | private
+  pinned: boolean;
+  hidden: boolean;
   /** Tổng số người đã RankUp TÁC GIẢ (mọi tầng) — hiện cạnh nút RankUp trên thẻ feed. */
   authorRankUps: number;
   /** top options for rankie cards (sorted desc, up to 4) */
@@ -251,6 +255,9 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       size,
       commentsCount: commentsBy.get(p.id) ?? 0,
       sharesCount: sharesBy.get(p.id) ?? 0,
+      visibility: (p as { visibility?: string }).visibility ?? 'public',
+      pinned: !!(p as { pinned?: boolean }).pinned,
+      hidden: !!(p as { hidden?: boolean }).hidden,
       authorRankUps: r.author ? rankBy.get(r.author.id) ?? 0 : 0,
       options: p.type === 'rankie' ? agg?.top ?? [] : undefined,
       endings: p.type === 'path' ? endingsBy.get(p.id) ?? [] : undefined,
@@ -277,6 +284,8 @@ export async function listFeed(
   conditions.push(sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`);
   // Chặn (2 chiều) / ẩn người / "Không quan tâm" → lọc ngay trong truy vấn.
   if (viewerId) conditions.push(...feedExclusions(viewerId, posts.authorId, posts.id));
+  // Riêng tư / theo link / đã ẩn → không lên feed của người khác.
+  conditions.push(listablePostCond(viewerId));
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (cursor) {
     const d = new Date(cursor.createdAt);
@@ -335,6 +344,7 @@ export async function searchAll(
       sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(${posts.tags}, '[]'::jsonb)) AS tg WHERE unaccent(lower(tg)) LIKE unaccent(${pat}))`,
     )!,
     ...(viewerId ? feedExclusions(viewerId, posts.authorId, posts.id).slice(0, 2) : []), // chặn 2 chiều
+    listablePostCond(viewerId), // riêng tư / theo link / đã ẩn không lộ qua tìm kiếm
   ];
   const userConds = [
     or(match(users.name), match(users.handle))!,
@@ -391,6 +401,8 @@ export async function listTrendingTags(limit = 20): Promise<{ tag: string; count
     FROM posts p, jsonb_array_elements_text(COALESCE(p.tags, '[]'::jsonb)) AS tg
     WHERE NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = p.id)
       AND p.created_at > now() - interval '90 days'
+      -- chỉ bài công khai còn sống (bài xoá / riêng tư / đã ẩn không được đẩy hashtag lên)
+      AND p.deleted_at IS NULL AND p.visibility = 'public' AND p.hidden = false
     GROUP BY unaccent(lower(tg))
     ORDER BY count DESC, tag ASC
     LIMIT ${limit}

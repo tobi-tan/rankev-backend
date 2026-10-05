@@ -3,7 +3,8 @@ import { parse } from '../../lib/validate';
 import { badRequest } from '../../lib/errors';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
 import { createRankieSchema, listPostsQuerySchema, updatePostSchema } from './posts.schemas';
-import { notifyNewPost } from '../notifications/notifications.service';
+import { notifyNewPost, createMentionNotifications } from '../notifications/notifications.service';
+import { assertPostAccess } from './access';
 import * as postsService from './posts.service';
 import { createPathSchema } from '../paths/paths.schemas';
 import * as pathsService from '../paths/paths.service';
@@ -19,8 +20,10 @@ export default async function postsRoutes(app: FastifyInstance): Promise<void> {
 
   // GET /posts/:id — dispatches on content type.
   app.get<{ Params: { id: string } }>('/:id', { preHandler: optionalAuth }, async (req) => {
-    const kind = await postsService.getPostKind(req.params.id);
     const viewerId = req.user?.id;
+    // Bài đã xoá / chỉ mình tôi / đã ẩn / hai bên chặn nhau → 404 với người không phải chủ.
+    await assertPostAccess(req.params.id, viewerId);
+    const kind = await postsService.getPostKind(req.params.id);
     if (kind === 'path') return pathsService.getPathById(req.params.id, viewerId);
     if (kind === 'deck') return decksService.getDeckById(req.params.id, viewerId);
     return postsService.getRankieById(req.params.id, viewerId);
@@ -33,15 +36,15 @@ export default async function postsRoutes(app: FastifyInstance): Promise<void> {
 
     if (type === 'path') {
       const body = parse(createPathSchema, req.body);
-      { const v = await pathsService.createPath(userId, body); notifyNewPost(userId, { postId: v.id }).catch(() => {}); return reply.code(201).send(v); }
+      { const v = await pathsService.createPath(userId, body); createMentionNotifications({ actorId: userId, text: body.caption, postId: v.id }).catch(() => [] as string[]).then((m) => notifyNewPost(userId, { postId: v.id }, m)).catch(() => {}); return reply.code(201).send(v); }
     }
     if (type === 'deck') {
       const body = parse(createDeckSchema, req.body);
-      { const v = await decksService.createDeck(userId, body); notifyNewPost(userId, { postId: v.id }).catch(() => {}); return reply.code(201).send(v); }
+      { const v = await decksService.createDeck(userId, body); createMentionNotifications({ actorId: userId, text: body.caption, postId: v.id }).catch(() => [] as string[]).then((m) => notifyNewPost(userId, { postId: v.id }, m)).catch(() => {}); return reply.code(201).send(v); }
     }
     if (type === 'rankie') {
       const body = parse(createRankieSchema, req.body);
-      { const v = await postsService.createRankie(userId, body); notifyNewPost(userId, { postId: v.id }).catch(() => {}); return reply.code(201).send(v); }
+      { const v = await postsService.createRankie(userId, body); createMentionNotifications({ actorId: userId, text: body.caption, postId: v.id }).catch(() => [] as string[]).then((m) => notifyNewPost(userId, { postId: v.id }, m)).catch(() => {}); return reply.code(201).send(v); }
     }
     throw badRequest(`Unsupported post type "${type}"`);
   });

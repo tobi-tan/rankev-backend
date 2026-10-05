@@ -186,6 +186,12 @@ describe('tournaments', () => {
       payload: { title: 'T', category: 'Game', closesInHours: 6, allowGuestPresent: true, contestants: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }] },
     });
     const t = res.json();
+    // Mỗi trận bán kết có 1 phiếu (không hoà — hoà thì luật mới không cho chốt vòng).
+    const voter = await registerUser(app);
+    for (const m of t.matches.filter((x: any) => x.round === 0 && x.rankiePostId)) {
+      const p = (await app.inject({ method: 'GET', url: `/posts/${m.rankiePostId}`, headers: bearer(owner.accessToken) })).json();
+      await app.inject({ method: 'POST', url: `/rankies/${m.rankiePostId}/vote`, headers: bearer(voter.accessToken), payload: { optionIds: [p.options[0].id] } });
+    }
     // Chốt bán kết → sinh chung kết (rankie mới) phải kế thừa cấu hình.
     const adv = await app.inject({ method: 'POST', url: `/tournaments/${t.id}/advance`, headers: bearer(owner.accessToken) });
     const t2 = adv.json();

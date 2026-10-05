@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { listablePostCond } from '../posts/access';
 import { db } from '../../db';
 import { users, posts, participations } from '../../db/schema';
 import { conflict, notFound } from '../../lib/errors';
@@ -57,7 +58,7 @@ export async function resolveHandles(handles: string[]): Promise<Map<string, str
 /** A user's own posts (any type) as feed summaries, newest first. */
 // includeDeleted: chỉ bật cho CHỦ tài khoản (/users/me/posts) để có bài trong "Thùng rác";
 // hồ sơ công khai (/users/:id/posts) luôn ẩn bài đã xoá mềm.
-export async function getUserPosts(authorId: string, includeDeleted = false): Promise<FeedSummary[]> {
+export async function getUserPosts(authorId: string, includeDeleted = false, viewerId?: string | null): Promise<FeedSummary[]> {
   const conds = [
     eq(posts.authorId, authorId),
     // Ẩn các bài-ván của giải đấu — giải hiện dưới dạng series/thẻ giải, không phải
@@ -65,11 +66,13 @@ export async function getUserPosts(authorId: string, includeDeleted = false): Pr
     sql`NOT EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.rankie_post_id = ${posts.id})`,
   ];
   if (!includeDeleted) conds.push(isNull(posts.deletedAt));
+  // Người khác xem hồ sơ: chỉ bài công khai, không bị ẩn (chủ xem /users/me/posts thấy hết).
+  if (!includeDeleted && viewerId !== authorId) conds.push(listablePostCond(viewerId));
   const rows = await db
     .select({ id: posts.id })
     .from(posts)
     .where(and(...conds))
-    .orderBy(desc(posts.createdAt), desc(posts.id))
+    .orderBy(desc(posts.pinned), desc(posts.createdAt), desc(posts.id)) // bài ghim lên đầu
     .limit(100);
   return summariesByIds(rows.map((r) => r.id));
 }

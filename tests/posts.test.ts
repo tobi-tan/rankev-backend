@@ -88,7 +88,9 @@ describe('posts + rankie', () => {
     // Trending trả về tag đã đếm.
     const trend = await app.inject({ method: 'GET', url: '/tags/trending' });
     expect(trend.statusCode).toBe(200);
-    expect(trend.json().items.some((t: any) => String(t.tag).toLowerCase() === 'amnhac' && t.count >= 1)).toBe(true);
+    // Gộp không phân biệt dấu (AmNhac ≡ ÂmNhạc) → so sánh sau khi bỏ dấu.
+    const plain = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    expect(trend.json().items.some((t: any) => plain(String(t.tag)) === 'amnhac' && t.count >= 1)).toBe(true);
 
     // PATCH thay tags.
     await app.inject({ method: 'PATCH', url: `/posts/${rk.id}`, headers: bearer(accessToken), payload: { tags: ['#game'] } });

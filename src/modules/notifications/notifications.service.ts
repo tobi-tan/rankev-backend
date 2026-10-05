@@ -26,10 +26,10 @@ export async function createMentionNotifications(opts: {
   text: string | null | undefined;
   postId?: string | null;
   tournamentId?: string | null;
-  commentId: string;
-}): Promise<void> {
+  commentId?: string | null; // null = @nhắc trong MÔ TẢ bài (không phải bình luận)
+}): Promise<string[]> {
   const handles = extractMentions(opts.text);
-  if (handles.length === 0) return;
+  if (handles.length === 0) return [];
   const map = await resolveHandles(handles);
   const snippet = (opts.text || '').slice(0, 140);
   const rows = [...map.values()]
@@ -40,11 +40,12 @@ export async function createMentionNotifications(opts: {
       actorId: opts.actorId,
       postId: opts.postId ?? null,
       tournamentId: opts.tournamentId ?? null,
-      commentId: opts.commentId,
+      commentId: opts.commentId ?? null,
       text: snippet,
     }));
-  if (rows.length === 0) return;
+  if (rows.length === 0) return [];
   await db.insert(notifications).values(rows);
+  return rows.map((r) => r.userId); // người đã nhận @nhắc (để không báo trùng "bài mới")
 }
 
 /**
@@ -53,7 +54,7 @@ export async function createMentionNotifications(opts: {
  * (giống "Yêu thích" của Facebook/Instagram). Bỏ qua người đã ẩn (mute) hoặc chặn/bị chặn.
  * Bài hẹn giờ (opensAt tương lai) không báo lúc tạo. Best-effort: không làm hỏng việc đăng bài.
  */
-export async function notifyNewPost(authorId: string, target: { postId?: string; tournamentId?: string }): Promise<void> {
+export async function notifyNewPost(authorId: string, target: { postId?: string; tournamentId?: string }, skipUserIds: string[] = []): Promise<void> {
   if (target.postId) {
     const [p] = await db.select({ opensAt: posts.opensAt, deletedAt: posts.deletedAt }).from(posts).where(eq(posts.id, target.postId));
     if (!p || p.deletedAt || (p.opensAt && p.opensAt.getTime() > Date.now())) return;
@@ -68,7 +69,7 @@ export async function notifyNewPost(authorId: string, target: { postId?: string;
       sql`NOT EXISTS (SELECT 1 FROM ${userBlocks} b WHERE (b.blocker_id = ${rankUps.userId} AND b.blocked_id = ${authorId}) OR (b.blocker_id = ${authorId} AND b.blocked_id = ${rankUps.userId}))`,
     ));
   const rows = fans
-    .filter((f) => f.userId !== authorId)
+    .filter((f) => f.userId !== authorId && !skipUserIds.includes(f.userId)) // đã được @nhắc → 1 thông báo là đủ
     .map((f) => ({ userId: f.userId, type: 'new_post', actorId: authorId, postId: target.postId ?? null, tournamentId: target.tournamentId ?? null }));
   if (rows.length === 0) return;
   await db.insert(notifications).values(rows);

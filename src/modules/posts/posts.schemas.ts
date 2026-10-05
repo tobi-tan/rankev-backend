@@ -71,6 +71,9 @@ export const updatePostSchema = z.object({
   chartType: z.enum(['bar', 'pie', 'head_to_head', 'hh_classic', 'h2h_bar', 'tug', 'beam', 'podium']).optional(),
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).optional(),
   hideEndingCount: z.boolean().optional(),
+  visibility: z.enum(['public', 'unlisted', 'private']).optional(), // quyền riêng tư (lưu thật)
+  pinned: z.boolean().optional(), // ghim đầu hồ sơ
+  hidden: z.boolean().optional(), // chủ bài ẩn — chỉ mình thấy
   // Rankie options — FULL replacement when provided. Có `id` = sửa (giữ phiếu),
   // không `id` = thêm mới (0 phiếu); option cũ vắng mặt = xoá (bỏ phiếu của nó).
   options: z

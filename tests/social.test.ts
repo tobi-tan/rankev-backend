@@ -117,10 +117,13 @@ describe('series + sessions', () => {
     expect(get.json().posts.length).toBe(1);
 
     await app.inject({ method: 'PATCH', url: `/series/${seriesId}`, headers: bearer(accessToken), payload: { name: 'Đổi tên' } });
-    await app.inject({ method: 'DELETE', url: `/series/${seriesId}/posts/${rk.id}`, headers: bearer(accessToken) });
     get = await app.inject({ method: 'GET', url: `/series/${seriesId}` });
     expect(get.json().name).toBe('Đổi tên');
-    expect(get.json().posts.length).toBe(0);
+    // Bỏ chapter cuối → series rỗng TỰ XOÁ (luật hiện tại).
+    const rm = await app.inject({ method: 'DELETE', url: `/series/${seriesId}/posts/${rk.id}`, headers: bearer(accessToken) });
+    expect(rm.json().seriesDeleted).toBe(true);
+    get = await app.inject({ method: 'GET', url: `/series/${seriesId}` });
+    expect(get.statusCode).toBe(404);
   });
 
   it('records and lists presentation sessions', async () => {

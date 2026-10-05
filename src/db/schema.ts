@@ -80,6 +80,10 @@ export const posts = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }), // soft-delete (thùng rác) | null = còn sống
     opensAt: timestamp('opens_at', { withTimezone: true }), // hẹn giờ lên sóng | null = mở ngay
+    // Quyền riêng tư (0032): public | unlisted (chỉ ai có link) | private (chỉ chủ bài). CHECK ở DB.
+    visibility: text('visibility').notNull().default('public'),
+    pinned: boolean('pinned').notNull().default(false), // ghim đầu hồ sơ
+    hidden: boolean('hidden').notNull().default(false), // chủ bài "Ẩn bài đăng" — chỉ chủ thấy
     closesAt: timestamp('closes_at', { withTimezone: true }),
     live: boolean('live').notNull().default(false),
     sponsored: boolean('sponsored').notNull().default(false),
