@@ -13,6 +13,8 @@ export const ONBOARDING_OPTIONS: Record<string, string[]> = {
   age: ['<18', '18-24', '25-34', '35-44', '45+'],
   gender: ['Nam', 'Nữ', 'Khác'],
   occupation: ['Học sinh/Sinh viên', 'Văn phòng', 'Kinh doanh', 'Kỹ thuật/IT', 'Sáng tạo/Nghệ thuật', 'Khác'],
+  terms: ['all', 'skim', 'agree'], // "Bạn đã đọc hết điều khoản…?" — đọc hết · đọc lướt · bấm đồng ý luôn
+  flat_earth: ['yes', 'no'], // câu hỏi tò mò: "Bạn có tin Trái Đất phẳng?"
 };
 const MULTI_KEYS = new Set(['type']);
 

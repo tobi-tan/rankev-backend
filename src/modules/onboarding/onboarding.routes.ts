@@ -5,7 +5,7 @@ import { authenticate, requireUserId } from '../../plugins/auth';
 import * as onboarding from './onboarding.service';
 
 const voteSchema = z.object({
-  key: z.enum(['theme', 'type', 'rating', 'age', 'gender', 'occupation']),
+  key: z.enum(['theme', 'type', 'rating', 'age', 'gender', 'occupation', 'terms', 'flat_earth']),
   choices: z.array(z.string().min(1).max(60)).min(1).max(8),
 });
 
