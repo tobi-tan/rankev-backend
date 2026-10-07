@@ -60,6 +60,8 @@ describe('deck exam grading', () => {
     expect(good.statusCode).toBe(200);
     expect(good.json().score).toBe(10);
     expect(good.json().correctCount).toBe(2);
+    // người đã nộp được xem đáp án đúng để xem lại bài
+    expect(good.json().correctOptionIds[q[0].id]).toEqual([correctOf(0, '4')]);
 
     // re-submit with one wrong → score 5
     const worse = await app.inject({
@@ -76,6 +78,13 @@ describe('deck exam grading', () => {
     const stats = await app.inject({ method: 'GET', url: `/decks/${exam.id}/stats` });
     expect(stats.json().participants).toBe(1);
     expect(stats.json().avgScore).toBe(5);
+    // phân bố đáp án thật theo câu (ẩn danh, không lộ cờ đúng/sai)
+    const tq = stats.json().questions;
+    expect(tq).toHaveLength(2);
+    expect(tq[0].answered).toBe(1);
+    expect(tq[0].options.find((o: any) => o.id === correctOf(0, '3')).count).toBe(1);
+    expect(tq[0].options.find((o: any) => o.id === correctOf(0, '4')).count).toBe(0);
+    expect(JSON.stringify(tq)).not.toContain('correct');
   });
 
   it('never leaks correct answers in the deck view', async () => {
@@ -83,6 +92,11 @@ describe('deck exam grading', () => {
     const exam = await createExam(app, accessToken);
     const view = await app.inject({ method: 'GET', url: `/posts/${exam.id}` });
     expect(view.body).not.toContain('"correct"');
+    // người khác (chưa nộp) xem bài: không có đáp án đúng
+    const other = await registerUser(app);
+    const view2 = await app.inject({ method: 'GET', url: `/posts/${exam.id}`, headers: bearer(other.accessToken) });
+    expect(view2.body).not.toContain('"correct"');
+    expect(view2.body).not.toContain('correctOptionIds');
   });
 
   it('survey submit stores answers without a score', async () => {

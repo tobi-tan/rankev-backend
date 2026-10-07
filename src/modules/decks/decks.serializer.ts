@@ -31,6 +31,18 @@ export interface DeckResult {
   /** Tổng điểm tối đa của bài thi + điểm quy về THANG 10 (app hiển thị "x/10"). */
   maxScore?: number | null;
   score10?: number | null;
+  /** Exam: đáp án đúng theo câu — CHỈ trả cho chính người đã nộp (xem lại bài sau khi nộp). */
+  correctOptionIds?: Record<string, string[]>;
+}
+
+/** questionId → id các đáp án đúng (chỉ câu có đáp án đúng). */
+export function correctMapOf(optionsByQuestion: Map<string, DeckOption[]>): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [qid, opts] of optionsByQuestion) {
+    const ids = opts.filter((o) => o.correct).map((o) => o.id);
+    if (ids.length) out[qid] = ids;
+  }
+  return out;
 }
 
 export interface DeckView {
@@ -59,9 +71,10 @@ export interface DeckView {
 export const toScore10 = (score: number | null, maxScore: number | null | undefined) =>
   score == null || !maxScore ? null : Math.round((score / maxScore) * 100) / 10;
 
-export function toDeckResult(p: Participation, maxScore?: number | null): DeckResult {
+export function toDeckResult(p: Participation, maxScore?: number | null, correctOptionIds?: Record<string, string[]>): DeckResult {
   const score = p.score === null ? null : Number(p.score);
   return {
+    ...(correctOptionIds && p.deckMode === 'exam' ? { correctOptionIds } : {}),
     score,
     maxScore: maxScore ?? null,
     score10: toScore10(score, maxScore),
@@ -124,7 +137,7 @@ export function toDeckView(
   };
   if (myResult !== undefined) {
     const maxScore = questions.reduce((t, q) => t + (Number(q.points) > 0 ? Number(q.points) : 0), 0);
-    view.myResult = myResult ? toDeckResult(myResult, maxScore || null) : null;
+    view.myResult = myResult ? toDeckResult(myResult, maxScore || null, post.deckMode === 'exam' ? correctMapOf(optionsByQuestion) : undefined) : null;
   }
   return view;
 }

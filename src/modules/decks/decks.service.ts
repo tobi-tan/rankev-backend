@@ -12,7 +12,7 @@ import {
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { getPostSeries } from '../series/series.service';
 import { countSharesOne } from '../messaging/shares';
-import { toDeckResult, toDeckView, toScore10, type DeckResult, type DeckView } from './decks.serializer';
+import { correctMapOf, toDeckResult, toDeckView, toScore10, type DeckResult, type DeckView } from './decks.serializer';
 
 /** Tổng điểm tối đa của một bài thi (các câu có điểm > 0). */
 async function examMaxScore(postId: string): Promise<number | null> {
@@ -254,7 +254,7 @@ export async function submitDeck(
     })
     .returning();
 
-  return toDeckResult(row, maxScoreOut);
+  return toDeckResult(row, maxScoreOut, post.deckMode === 'exam' ? correctMapOf(optionsByQuestion) : undefined);
 }
 
 export async function getMyResult(userId: string, postId: string): Promise<DeckResult | null> {
@@ -263,7 +263,47 @@ export async function getMyResult(userId: string, postId: string): Promise<DeckR
     .from(participations)
     .where(and(eq(participations.userId, userId), eq(participations.postId, postId)));
   if (!p) return null;
-  return toDeckResult(p, p.deckMode === 'exam' ? await examMaxScore(postId) : null);
+  if (p.deckMode !== 'exam') return toDeckResult(p, null);
+  const qs = await db.select({ id: deckQuestions.id }).from(deckQuestions).where(eq(deckQuestions.postId, postId));
+  const os = qs.length ? await db.select().from(deckOptions).where(inArray(deckOptions.questionId, qs.map((q) => q.id))) : [];
+  const byQ = new Map<string, typeof os>();
+  for (const o of os) byQ.set(o.questionId, [...(byQ.get(o.questionId) ?? []), o]);
+  return toDeckResult(p, await examMaxScore(postId), correctMapOf(byQ));
+}
+
+/** Phân bố đáp án THẬT theo câu (chỉ số đếm, ẩn danh — không kèm cờ đúng/sai). */
+export interface QuestionTally {
+  id: string;
+  answered: number;
+  options: { id: string; count: number }[];
+}
+
+/** Đếm số lần chọn từng đáp án + số câu tự luận đã trả lời, theo thứ tự câu/đáp án. */
+async function tallyAnswers(postId: string, parts: { answers: unknown }[]): Promise<QuestionTally[]> {
+  const questions = await db.select().from(deckQuestions).where(eq(deckQuestions.postId, postId));
+  const qIds = questions.map((q) => q.id);
+  const opts = qIds.length ? await db.select().from(deckOptions).where(inArray(deckOptions.questionId, qIds)) : [];
+  const optionCounts = new Map<string, number>();
+  const textCounts = new Map<string, number>();
+  for (const p of parts) {
+    const answers = (p.answers ?? {}) as Record<string, unknown>;
+    for (const q of questions) {
+      const given = answers[q.id];
+      if (q.votingType === 'text') {
+        if (typeof given === 'string' && given.trim()) textCounts.set(q.id, (textCounts.get(q.id) ?? 0) + 1);
+      } else {
+        for (const oid of toIdArray(given)) optionCounts.set(oid, (optionCounts.get(oid) ?? 0) + 1);
+      }
+    }
+  }
+  return questions
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((q) => {
+      const qOpts = opts.filter((o) => o.questionId === q.id).sort((a, b) => a.position - b.position);
+      const answered = q.votingType === 'text' ? textCounts.get(q.id) ?? 0 : qOpts.reduce((s, o) => s + (optionCounts.get(o.id) ?? 0), 0);
+      return { id: q.id, answered, options: qOpts.map((o) => ({ id: o.id, count: optionCounts.get(o.id) ?? 0 })) };
+    });
 }
 
 export async function getStats(postId: string): Promise<{
@@ -273,6 +313,8 @@ export async function getStats(postId: string): Promise<{
   avgScore10?: number | null;
   /** điểm (thang 10) của từng người đã làm — ẩn danh, để vẽ phân bố điểm thật */
   scores10?: number[];
+  /** phân bố đáp án thật theo câu — cùng một kiểu hiển thị kết quả ở mọi màn */
+  questions?: QuestionTally[];
 }> {
   const [post] = await db
     .select({ id: posts.id, type: posts.type, deckMode: posts.deckMode })
@@ -286,9 +328,14 @@ export async function getStats(postId: string): Promise<{
     .where(eq(participations.postId, postId));
 
   const avgRaw = post.deckMode === 'exam' && row?.avgScore != null ? Math.round(Number(row.avgScore) * 10) / 10 : null;
-  if (post.deckMode !== 'exam') return { participants: Number(row?.participants ?? 0), avgScore: null };
+  const all = await db
+    .select({ score: participations.score, answers: participations.answers })
+    .from(participations)
+    .where(eq(participations.postId, postId))
+    .limit(2000);
+  const questions = await tallyAnswers(postId, all);
+  if (post.deckMode !== 'exam') return { participants: Number(row?.participants ?? 0), avgScore: null, questions };
   const maxScore = await examMaxScore(postId);
-  const all = await db.select({ score: participations.score }).from(participations).where(eq(participations.postId, postId)).limit(2000);
   const scores10 = all.map((r) => toScore10(r.score === null ? null : Number(r.score), maxScore)).filter((x): x is number => x != null);
   return {
     participants: Number(row?.participants ?? 0),
@@ -296,6 +343,7 @@ export async function getStats(postId: string): Promise<{
     maxScore,
     avgScore10: toScore10(avgRaw, maxScore),
     scores10,
+    questions,
   };
 }
 
