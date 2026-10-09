@@ -30,6 +30,10 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),     // OAuth Client ID (Web) ở Google Cloud Console
   FACEBOOK_APP_ID: z.string().optional(),      // App ID ở Meta for Developers
   APPLE_CLIENT_ID: z.string().optional(),      // Services ID ở Apple Developer (vd com.rankev.web)
+
+  // --- Email (quên mật khẩu). Bỏ trống RESEND_API_KEY = chỉ in mã ra log. ---
+  RESEND_API_KEY: z.string().optional(),
+  MAIL_FROM: z.string().default('Rankev <onboarding@resend.dev>'),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

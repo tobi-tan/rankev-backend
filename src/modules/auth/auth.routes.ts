@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { isProd, env } from '../../env';
 import { parse } from '../../lib/validate';
 import { toPublicUser } from '../users/users.serializer';
-import { registerSchema, loginSchema, socialSchema } from './auth.schemas';
+import { registerSchema, loginSchema, socialSchema, forgotSchema, resetSchema } from './auth.schemas';
+import { requestPasswordReset, resetPassword } from './password-reset';
 import * as authService from './auth.service';
 import type { IssuedTokens } from './auth.service';
 import { verifySocialToken, isProviderEnabled } from './social';
@@ -78,6 +79,21 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /auth/providers — provider nào đang bật (client ẩn nút chưa cấu hình)
+  // POST /auth/forgot — gửi mã 6 số qua email. Luôn 204 (không lộ email có tồn tại hay không).
+  const resetLimit = { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } };
+  app.post('/forgot', resetLimit, async (req, reply) => {
+    const body = parse(forgotSchema, req.body);
+    await requestPasswordReset(body.email);
+    return reply.code(204).send();
+  });
+
+  // POST /auth/reset — đổi mật khẩu bằng mã; đăng xuất mọi thiết bị.
+  app.post('/reset', resetLimit, async (req, reply) => {
+    const body = parse(resetSchema, req.body);
+    await resetPassword(body.email, body.code, body.password);
+    return reply.code(204).send();
+  });
+
   app.get('/providers', async () => ({
     google: isProviderEnabled('google'),
     facebook: isProviderEnabled('facebook'),
