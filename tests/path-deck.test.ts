@@ -63,7 +63,7 @@ describe('deck exam grading', () => {
     // người đã nộp được xem đáp án đúng để xem lại bài
     expect(good.json().correctOptionIds[q[0].id]).toEqual([correctOf(0, '4')]);
 
-    // re-submit with one wrong → score 5
+    // làm LẠI (sai 1 câu) → được chấm 5 điểm nhưng chỉ là LUYỆN TẬP; điểm chính thức vẫn 10 (lần đầu)
     const worse = await app.inject({
       method: 'POST',
       url: `/decks/${exam.id}/submit`,
@@ -71,19 +71,21 @@ describe('deck exam grading', () => {
       payload: { answers: { [q[0].id]: correctOf(0, '3'), [q[1].id]: correctOf(1, 'Hà Nội') } },
     });
     expect(worse.json().score).toBe(5);
+    expect(worse.json().practice).toBe(true);
+    expect(worse.json().official.score).toBe(10);
 
     const mine = await app.inject({ method: 'GET', url: `/decks/${exam.id}/my-result`, headers: bearer(taker.accessToken) });
-    expect(mine.json().result.score).toBe(5);
+    expect(mine.json().result.score).toBe(10);
 
     const stats = await app.inject({ method: 'GET', url: `/decks/${exam.id}/stats` });
     expect(stats.json().participants).toBe(1);
-    expect(stats.json().avgScore).toBe(5);
+    expect(stats.json().avgScore).toBe(10);
     // phân bố đáp án thật theo câu (ẩn danh, không lộ cờ đúng/sai)
     const tq = stats.json().questions;
     expect(tq).toHaveLength(2);
     expect(tq[0].answered).toBe(1);
-    expect(tq[0].options.find((o: any) => o.id === correctOf(0, '3')).count).toBe(1);
-    expect(tq[0].options.find((o: any) => o.id === correctOf(0, '4')).count).toBe(0);
+    expect(tq[0].options.find((o: any) => o.id === correctOf(0, '4')).count).toBe(1);
+    expect(tq[0].options.find((o: any) => o.id === correctOf(0, '3')).count).toBe(0);
     expect(JSON.stringify(tq)).not.toContain('correct');
   });
 

@@ -33,6 +33,9 @@ export interface DeckResult {
   score10?: number | null;
   /** Exam: đáp án đúng theo câu — CHỈ trả cho chính người đã nộp (xem lại bài sau khi nộp). */
   correctOptionIds?: Record<string, string[]>;
+  /** Exam làm LẠI: chỉ là luyện tập — điểm chính thức vẫn là lần đầu (official). */
+  practice?: boolean;
+  official?: { score: number | null; score10: number | null; correctCount: number | null };
 }
 
 /** questionId → id các đáp án đúng (chỉ câu có đáp án đúng). */

@@ -223,6 +223,29 @@ export async function submitDeck(
     correctCount = correct;
     totalGradable = gradable;
     detail = `${score}/${Math.round(maxScore * 10) / 10} · ${correct}/${gradable} câu đúng`;
+
+    // ĐIỂM CHÍNH THỨC = LẦN LÀM ĐẦU TIÊN. Làm lại vẫn được chấm + xem đáp án (luyện tập) nhưng
+    // KHÔNG ghi đè điểm/xếp hạng — tránh nộp thử để xem đáp án rồi làm lại lấy điểm cao.
+    const [prev] = await db
+      .select()
+      .from(participations)
+      .where(and(eq(participations.userId, userId), eq(participations.postId, postId)));
+    if (prev) {
+      const prevScore = prev.score === null ? null : Number(prev.score);
+      return {
+        score,
+        maxScore: maxScoreOut,
+        score10: toScore10(score, maxScoreOut),
+        correctCount,
+        totalGradable,
+        detail,
+        answers: input.answers,
+        participatedAt: new Date().toISOString(),
+        correctOptionIds: correctMapOf(optionsByQuestion),
+        practice: true,
+        official: { score: prevScore, score10: toScore10(prevScore, maxScoreOut), correctCount: prev.correctCount },
+      };
+    }
   } else {
     const answered = questions.filter((q) => normalizeAnswer(input.answers[q.id]).length > 0).length;
     detail = `${answered}/${questions.length} câu`;
