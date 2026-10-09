@@ -47,8 +47,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(cookie);
+  // App điện thoại (Capacitor) chạy từ origin riêng: iOS = capacitor://localhost,
+  // Android = https://localhost → luôn cho phép, kể cả khi CORS_ORIGIN chỉ liệt kê domain web.
+  const NATIVE_APP_ORIGINS = ['capacitor://localhost', 'https://localhost', 'http://localhost'];
   await app.register(cors, {
-    origin: env.CORS_ORIGIN ? env.CORS_ORIGIN.split(',').map((s) => s.trim()) : true,
+    origin: env.CORS_ORIGIN ? [...env.CORS_ORIGIN.split(',').map((s) => s.trim()), ...NATIVE_APP_ORIGINS] : true,
     credentials: true,
   });
 
