@@ -7,6 +7,13 @@ export const REPORT_REASONS = [
   'violence',
   'sexual',
   'misinformation',
+  // bổ sung theo Tiêu chuẩn cộng đồng (/legal/community)
+  'child_safety',
+  'self_harm',
+  'privacy',
+  'impersonation',
+  'ip',
+  'scam',
   'other',
 ] as const;
 

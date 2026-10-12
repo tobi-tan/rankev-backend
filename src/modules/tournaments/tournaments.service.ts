@@ -730,6 +730,7 @@ export async function listTournamentFeed(limit = 30, viewerId?: string, onlyIds?
     // Giải của người đã chặn (2 chiều) / đã ẩn không lên feed (3 điều kiện theo tác giả).
     .where(and(
       onlyIds ? inArray(tournaments.id, onlyIds) : undefined, // tìm kiếm: chỉ các giải khớp
+      isNull(users.suspendedAt), // chủ giải bị khoá → ẩn giải
       ...(viewerId ? feedExclusions(viewerId, tournaments.authorId, tournaments.id).slice(0, 3) : []),
     ))
     .orderBy(desc(tournaments.createdAt))

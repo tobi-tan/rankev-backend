@@ -99,8 +99,39 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   const pathIds = rows.filter((r) => r.post.type === 'path').map((r) => r.post.id);
   const deckIds = rows.filter((r) => r.post.type === 'deck').map((r) => r.post.id);
   const allIds = rows.map((r) => r.post.id);
+  const authorIds = [...new Set(rows.map((r) => r.author?.id).filter((x): x is string => !!x))];
 
-  const [rankieOptRows, pathEnds, pathQs, deckQs, parts, commentRows, sharesBy] = await Promise.all([
+  // MỌI truy vấn phụ chạy SONG SONG (mỗi lượt gọi Render→Neon tốn 1 vòng mạng — trước đây
+  // 4 truy vấn cuối chạy nối tiếp nên feed chậm thêm ~4 vòng).
+  // Xem trước kết quả Path (tên + emoji/ảnh, đông người nhất trước) — tối đa 3 mỗi bài.
+  const endingRowsP = pathIds.length
+    ? db
+        .select({ postId: pathEndings.postId, name: pathEndings.name, emoji: pathEndings.emoji, imageUrl: pathEndings.imageUrl, count: pathEndings.count })
+        .from(pathEndings)
+        .where(inArray(pathEndings.postId, pathIds))
+    : Promise.resolve([]);
+  // Series của mỗi post (qua bảng join series_posts) — để web nhóm chapter.
+  const seriesRowsP = allIds.length
+    ? db
+        .select({ postId: seriesPosts.postId, seriesId: seriesPosts.seriesId, name: series.name })
+        .from(seriesPosts)
+        .innerJoin(series, eq(series.id, seriesPosts.seriesId))
+        .where(inArray(seriesPosts.postId, allIds))
+    : Promise.resolve([]);
+  // Tổng RankUp của từng tác giả (mọi tầng) — 1 truy vấn gộp cho cả trang feed.
+  const rankRowsP = authorIds.length
+    ? db.select({ authorId: rankUps.authorId, c: sql<number>`count(*)::int` }).from(rankUps).where(inArray(rankUps.authorId, authorIds)).groupBy(rankUps.authorId)
+    : Promise.resolve([]);
+  // Bài nào là TRẬN của giải đấu → gắn giải (để feed hiện nhãn "🏆 Giải", và KHÔNG coi là series).
+  const matchRowsP = allIds.length
+    ? db
+        .select({ postId: tournamentMatches.rankiePostId, tournamentId: tournaments.id, title: tournaments.title })
+        .from(tournamentMatches)
+        .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
+        .where(inArray(tournamentMatches.rankiePostId, allIds))
+    : Promise.resolve([]);
+
+  const [rankieOptRows, pathEnds, pathQs, deckQs, parts, commentRows, sharesBy, endingRows, seriesRows, rankRows, matchRows] = await Promise.all([
     rankieIds.length
       ? db
           .select({
@@ -150,6 +181,10 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
           .groupBy(comments.postId)
       : Promise.resolve([] as { id: string; c: number }[]),
     countShares(allIds),
+    endingRowsP,
+    seriesRowsP,
+    rankRowsP,
+    matchRowsP,
   ]);
 
   // Group rankie options → total votes, count, and top-4 sorted desc.
@@ -167,13 +202,6 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   }
 
   const endsBy = new Map(pathEnds.map((r) => [r.id, Number(r.c)]));
-  // Xem trước kết quả Path (tên + emoji/ảnh, đông người nhất trước) — tối đa 3 mỗi bài.
-  const endingRows = pathIds.length
-    ? await db
-        .select({ postId: pathEndings.postId, name: pathEndings.name, emoji: pathEndings.emoji, imageUrl: pathEndings.imageUrl, count: pathEndings.count })
-        .from(pathEndings)
-        .where(inArray(pathEndings.postId, pathIds))
-    : [];
   const endingsBy = new Map<string, FeedEnding[]>();
   for (const e of [...endingRows].sort((x, y) => (y.count ?? 0) - (x.count ?? 0))) {
     const list = endingsBy.get(e.postId) ?? [];
@@ -185,31 +213,10 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
   const partsBy = new Map(parts.map((r) => [r.id, Number(r.c)]));
   const commentsBy = new Map(commentRows.map((r) => [r.id, Number(r.c)]));
 
-  // Series của mỗi post (qua bảng join series_posts) — để web nhóm chapter.
-  const seriesRows = allIds.length
-    ? await db
-        .select({ postId: seriesPosts.postId, seriesId: seriesPosts.seriesId, name: series.name })
-        .from(seriesPosts)
-        .innerJoin(series, eq(series.id, seriesPosts.seriesId))
-        .where(inArray(seriesPosts.postId, allIds))
-    : [];
   const seriesBy = new Map(seriesRows.map((r) => [r.postId, { seriesId: r.seriesId, seriesName: r.name }]));
 
-  // Tổng RankUp của từng tác giả (mọi tầng) — 1 truy vấn gộp cho cả trang feed.
-  const authorIds = [...new Set(rows.map((r) => r.author?.id).filter((x): x is string => !!x))];
-  const rankRows = authorIds.length
-    ? await db.select({ authorId: rankUps.authorId, c: sql<number>`count(*)::int` }).from(rankUps).where(inArray(rankUps.authorId, authorIds)).groupBy(rankUps.authorId)
-    : [];
   const rankBy = new Map(rankRows.map((r) => [r.authorId, Number(r.c)]));
 
-  // Bài nào là TRẬN của giải đấu → gắn giải (để feed hiện nhãn "🏆 Giải", và KHÔNG coi là series).
-  const matchRows = allIds.length
-    ? await db
-        .select({ postId: tournamentMatches.rankiePostId, tournamentId: tournaments.id, title: tournaments.title })
-        .from(tournamentMatches)
-        .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
-        .where(inArray(tournamentMatches.rankiePostId, allIds))
-    : [];
   const matchBy = new Map(
     matchRows.filter((r): r is { postId: string; tournamentId: string; title: string } => !!r.postId).map((r) => [r.postId, { tournamentId: r.tournamentId, tournamentTitle: r.title }]),
   );

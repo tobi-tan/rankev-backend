@@ -3,6 +3,7 @@ import { db } from '../../db';
 import { comments, hiddenPosts, posts, reports, userBlocks, userMutes, users } from '../../db/schema';
 import { badRequest, notFound } from '../../lib/errors';
 import type { ReportInput } from './moderation.schemas';
+import { alertAdminsOfReport } from '../admin/admin.service';
 
 type TargetType = 'post' | 'comment' | 'user';
 
@@ -20,7 +21,7 @@ export async function report(
   input: ReportInput,
 ): Promise<void> {
   await assertTargetExists(type, targetId);
-  await db
+  const inserted = await db
     .insert(reports)
     .values({
       reporterId,
@@ -29,7 +30,10 @@ export async function report(
       reason: input.reason,
       note: input.note,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: reports.id });
+  // Báo cáo mới → email quản trị viên (không chờ, không làm hỏng luồng báo cáo).
+  if (inserted.length) void alertAdminsOfReport(type, targetId, input.reason, input.note).catch(() => {});
 }
 
 export async function blockUser(blockerId: string, blockedId: string): Promise<void> {

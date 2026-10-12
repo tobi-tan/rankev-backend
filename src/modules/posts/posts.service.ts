@@ -321,9 +321,11 @@ export async function deletePost(id: string, userId: string): Promise<void> {
 
 // Khôi phục bài từ thùng rác.
 export async function restorePost(id: string, userId: string): Promise<void> {
-  const [post] = await db.select({ authorId: posts.authorId }).from(posts).where(eq(posts.id, id));
+  const [post] = await db.select({ authorId: posts.authorId, removedAt: posts.removedAt }).from(posts).where(eq(posts.id, id));
   if (!post) throw notFound('Post not found');
   if (post.authorId !== userId) throw forbidden('Only the author can restore this post');
+  // Bài bị GỠ do vi phạm (kiểm duyệt) → chủ bài không tự khôi phục được (khiếu nại qua email).
+  if (post.removedAt) throw forbidden('Bài đã bị gỡ do vi phạm Tiêu chuẩn cộng đồng, không thể khôi phục');
   await db.update(posts).set({ deletedAt: null }).where(eq(posts.id, id));
 }
 

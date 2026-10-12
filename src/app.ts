@@ -14,6 +14,7 @@ import usersRoutes from './modules/users/users.routes';
 import postsRoutes from './modules/posts/posts.routes';
 import rankiesRoutes from './modules/rankies/rankies.routes';
 import moderationRoutes from './modules/moderation/moderation.routes';
+import adminRoutes from './modules/admin/admin.routes';
 import legalRoutes from './modules/legal/legal.routes';
 import commentsRoutes from './modules/comments/comments.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
@@ -97,6 +98,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(liveRoutes);
   await app.register(uploadsRoutes, { prefix: '/uploads' });
   await app.register(moderationRoutes);
+  await app.register(adminRoutes);
   await app.register(legalRoutes);
   await app.register(commentsRoutes);
   await app.register(notificationsRoutes);

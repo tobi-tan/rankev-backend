@@ -8,6 +8,9 @@ import { toCommentView, type CommentView } from './comments.serializer';
 import type { CreateCommentInput, ListCommentsQuery } from './comments.schemas';
 import { createMentionNotifications } from '../notifications/notifications.service';
 
+// Tác giả bị khoá (kiểm duyệt) → ẩn bình luận.
+const notSuspendedAuthor = sql`NOT EXISTS (SELECT 1 FROM users su WHERE su.id = ${comments.userId} AND su.suspended_at IS NOT NULL)`;
+
 async function assertPost(postId: string): Promise<void> {
   const [p] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
   if (!p) throw notFound('Post not found');
@@ -20,6 +23,7 @@ export async function listComments(
 ): Promise<{ items: CommentView[]; nextCursor: string | null }> {
   const conditions = [eq(comments.postId, postId)];
   conditions.push(query.parentId ? eq(comments.parentId, query.parentId) : isNull(comments.parentId));
+  conditions.push(notSuspendedAuthor); // bình luận của tài khoản bị khoá không hiện
 
   // Per-ending comment threads (Path): only visible to viewers who have unlocked
   // that ending — enforced server-side so a tampered client can't reveal them (spec §6.5).
@@ -143,6 +147,7 @@ export async function listTournamentComments(
 ): Promise<{ items: CommentView[]; nextCursor: string | null }> {
   const conditions = [eq(comments.tournamentId, tournamentId)];
   conditions.push(query.parentId ? eq(comments.parentId, query.parentId) : isNull(comments.parentId));
+  conditions.push(notSuspendedAuthor); // bình luận của tài khoản bị khoá không hiện
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (cursor) {
     const d = new Date(cursor.createdAt);

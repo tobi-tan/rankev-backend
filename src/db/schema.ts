@@ -41,6 +41,9 @@ export const users = pgTable('users', {
   gender: text('gender'),
   occupation: text('occupation'),
   demographicsPublic: jsonb('demographics_public').$type<Record<string, boolean>>().notNull().default({}),
+  // Khoá do vi phạm (migration 0034): không đăng nhập được, bài bị ẩn khỏi người khác.
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  suspendReason: text('suspend_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -84,6 +87,7 @@ export const posts = pgTable(
     visibility: text('visibility').notNull().default('public'),
     pinned: boolean('pinned').notNull().default(false), // ghim đầu hồ sơ
     hidden: boolean('hidden').notNull().default(false), // chủ bài "Ẩn bài đăng" — chỉ chủ thấy
+    removedAt: timestamp('removed_at', { withTimezone: true }), // bị GỠ do vi phạm (0034)
     closesAt: timestamp('closes_at', { withTimezone: true }),
     live: boolean('live').notNull().default(false),
     sponsored: boolean('sponsored').notNull().default(false),
@@ -292,6 +296,9 @@ export const reports = pgTable(
     status: text('status', { enum: ['open', 'reviewed', 'actioned', 'dismissed'] })
       .notNull()
       .default('open'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+    resolution: text('resolution'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

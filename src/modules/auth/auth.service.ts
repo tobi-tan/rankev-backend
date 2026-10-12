@@ -8,7 +8,7 @@ import {
   hashToken,
   refreshExpiryDate,
 } from '../../lib/tokens';
-import { conflict, unauthorized } from '../../lib/errors';
+import { conflict, forbidden, unauthorized } from '../../lib/errors';
 import type { RegisterInput, LoginInput } from './auth.schemas';
 import type { SocialProfile } from './social';
 
@@ -18,7 +18,12 @@ export interface IssuedTokens {
   refreshExpiresAt: Date;
 }
 
+export const SUSPENDED_MSG = 'Tài khoản đã bị khoá do vi phạm Tiêu chuẩn cộng đồng. Nếu cho rằng có nhầm lẫn, hãy gửi kháng nghị qua email hỗ trợ.';
+
 async function issueTokens(userId: string): Promise<IssuedTokens> {
+  // Tài khoản bị khoá (kiểm duyệt) → không cấp phiên mới (đăng nhập, MXH, làm mới token).
+  const [u] = await db.select({ suspendedAt: users.suspendedAt }).from(users).where(eq(users.id, userId));
+  if (u?.suspendedAt) throw forbidden(SUSPENDED_MSG);
   const accessToken = signAccessToken(userId);
   const { token, hash } = generateRefreshToken();
   const refreshExpiresAt = refreshExpiryDate();

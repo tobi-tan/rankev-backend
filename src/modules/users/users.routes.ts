@@ -10,6 +10,8 @@ import { getMyRankUps, getRankUpCounts } from '../rankups/rankups.service';
 import { toPublicUser } from './users.serializer';
 import { updateProfileSchema } from './users.schemas';
 import * as usersService from './users.service';
+import { isAdmin } from '../admin/admin.service';
+import { buildExport, signExportToken, verifyExportToken } from './export';
 
 export default async function usersRoutes(app: FastifyInstance): Promise<void> {
   // GET /users/me — current user + their RankUps map
@@ -17,8 +19,8 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUserId(req);
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw notFound('User not found');
-    const rankUps = await getMyRankUps(userId);
-    return { user: toPublicUser(user, true), rankUps };
+    const [rankUps, admin] = await Promise.all([getMyRankUps(userId), isAdmin(userId)]);
+    return { user: toPublicUser(user, true), rankUps, isAdmin: admin };
   });
 
   // PATCH /users/me — update profile
@@ -30,8 +32,25 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
 
   // DELETE /users/me — permanently delete the account (App Store 5.1.1(v)).
   app.delete('/me', { preHandler: authenticate }, async (req, reply) => {
-    await db.delete(users).where(eq(users.id, requireUserId(req)));
+    await usersService.deleteAccount(requireUserId(req));
     return reply.code(204).send();
+  });
+
+  // "Tải thông tin của bạn": POST tạo link tải ngắn hạn (app mở bằng trình duyệt) →
+  // GET /users/me/export?token=… trả file JSON đính kèm.
+  app.post('/me/export-link', { preHandler: authenticate }, async (req) => {
+    const token = signExportToken(requireUserId(req));
+    return { url: `/users/me/export?token=${encodeURIComponent(token)}`, expiresInSec: 600 };
+  });
+  app.get<{ Querystring: { token?: string } }>('/me/export', async (req, reply) => {
+    const userId = verifyExportToken(String(req.query.token || ''));
+    const data = await buildExport(userId);
+    const day = new Date().toISOString().slice(0, 10);
+    return reply
+      .header('content-type', 'application/json; charset=utf-8')
+      .header('content-disposition', `attachment; filename="rankev-du-lieu-${day}.json"`)
+      .header('cache-control', 'no-store')
+      .send(JSON.stringify(data, null, 2));
   });
 
   // GET /users/me/posts — own posts (kèm bài trong THÙNG RÁC để hồ sơ tự tách tab)

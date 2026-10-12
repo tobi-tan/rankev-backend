@@ -115,3 +115,37 @@ export async function getHistory(userId: string): Promise<HistoryItem[]> {
     participatedAt: r.part.updatedAt.toISOString(),
   }));
 }
+
+/**
+ * Xoá tài khoản vĩnh viễn (App Store 5.1.1(v) / Google Play). Các bảng tham chiếu user đều
+ * xoá dây chuyền (FK cascade), nhưng SỐ ĐẾM gộp (phiếu từng lựa chọn, lượt về kết quả Path)
+ * là cột đếm riêng → phải trừ phần của người này TRƯỚC khi xoá, nếu không phiếu của tài khoản
+ * đã xoá vẫn nằm trong kết quả. Bình chọn "không giới hạn" giữ nguyên lượt chạm (ẩn danh,
+ * không truy được từng lượt thuộc lựa chọn nào) — chỉ bớt 1 người bình chọn.
+ */
+export async function deleteAccount(userId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const mine = sql`
+      SELECT o.id AS option_id, v.rankie_id, p.voting_type
+      FROM votes v
+      JOIN posts p ON p.id = v.rankie_id
+      JOIN rankie_options o ON o.rankie_id = v.rankie_id AND o.id::text = ANY (v.option_ids)
+      WHERE v.user_id = ${userId} AND p.author_id <> ${userId}`;
+    // nhật ký ẩn danh cho "Dòng thời gian cạnh tranh" khớp với số phiếu sau khi trừ
+    await tx.execute(sql`
+      INSERT INTO vote_events (rankie_id, option_id, delta)
+      SELECT m.rankie_id, m.option_id, -1 FROM (${mine}) m WHERE m.voting_type <> 'unlimited'`);
+    await tx.execute(sql`
+      UPDATE rankie_options o SET
+        votes = CASE WHEN m.voting_type = 'unlimited' THEN o.votes ELSE GREATEST(o.votes - 1, 0) END,
+        voters = GREATEST(o.voters - 1, 0)
+      FROM (${mine}) m
+      WHERE o.id = m.option_id`);
+    // Path: bớt 1 lượt ở kết quả người này đã nhận
+    await tx.execute(sql`
+      UPDATE path_endings e SET count = GREATEST(e.count - 1, 0)
+      FROM participations pa
+      WHERE pa.user_id = ${userId} AND pa.type = 'path' AND pa.post_id = e.post_id AND pa.ending_name = e.name`);
+    await tx.delete(users).where(eq(users.id, userId));
+  });
+}

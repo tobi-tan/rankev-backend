@@ -34,6 +34,12 @@ const EnvSchema = z.object({
   // --- Email (quên mật khẩu). Bỏ trống RESEND_API_KEY = chỉ in mã ra log. ---
   RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default('Rankev <onboarding@resend.dev>'),
+
+  // --- Kiểm duyệt: email QUẢN TRỊ VIÊN (cách nhau dấu phẩy) — được xem/xử lý báo cáo và nhận
+  //     email khi có báo cáo mới. Bỏ trống = không ai có quyền kiểm duyệt. ---
+  ADMIN_EMAILS: z.string().default(''),
+  // Email hỗ trợ hiện trên các trang chính sách (kháng nghị, bản quyền, xoá tài khoản, an toàn trẻ em).
+  SUPPORT_EMAIL: z.string().default('support@rankev.example.com'),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -46,3 +52,5 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
+/** Email quản trị viên (chữ thường). */
+export const adminEmails = env.ADMIN_EMAILS.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
