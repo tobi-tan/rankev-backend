@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { comments, notifications, posts, refreshTokens, reports, users } from '../../db/schema';
-import { adminEmails } from '../../env';
+import { comments, notifications, passwordResets, posts, refreshTokens, reports, users } from '../../db/schema';
+import { adminEmails, env } from '../../env';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { sendMail } from '../../lib/mailer';
 
@@ -181,7 +181,7 @@ export async function alertAdminsOfReport(targetType: TargetType, targetId: stri
     .where(and(eq(reports.status, 'open')));
   const label = targetType === 'post' ? 'bài viết' : targetType === 'comment' ? 'bình luận' : 'tài khoản';
   const text = `Có báo cáo mới về một ${label} (lý do: ${reason}).${note ? `\nGhi chú: ${note}` : ''}\nMã nội dung: ${targetId}\n\nĐang chờ xử lý: ${c} báo cáo. Mở Rankev → Hồ sơ → ⚙ Cài đặt → Kiểm duyệt để xử lý (cam kết trong 24 giờ).`;
-  await Promise.all(adminEmails.map((to) => sendMail({ to, subject: `[Rankev] Báo cáo mới: ${label} — ${reason}`, text }).catch(() => {})));
+  await Promise.all(adminEmails.map((to) => sendMail({ to, subject: `[Rankev] Báo cáo mới: ${label} — ${reason}`, text }).catch(() => null)));
 }
 
 /** Thống kê nhanh cho bàn kiểm duyệt. */
@@ -195,3 +195,29 @@ export async function reportStats(): Promise<{ open: number; overdue: number }> 
   return { open: r?.open ?? 0, overdue: r?.overdue ?? 0 };
 }
 
+
+/**
+ * "Gửi email thử" — chẩn đoán cấu hình email ngay trong app (không cần đọc log Render):
+ * gửi một thư tới CHÍNH quản trị viên và trả nguyên văn lỗi của Resend + gợi ý tiếng Việt.
+ */
+export async function sendTestEmail(adminId: string): Promise<{ ok: boolean; to: string; from: string; keySet: boolean; resetRequestsLastHour: number; error?: string; hint?: string }> {
+  const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, adminId));
+  if (!u) throw notFound('User not found');
+  const [{ c } = { c: 0 }] = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(passwordResets)
+    .where(and(eq(passwordResets.userId, adminId), sql`${passwordResets.createdAt} > now() - interval '1 hour'`));
+  const r = await sendMail({
+    to: u.email,
+    subject: '[Rankev] Email thử — cấu hình gửi thư đã chạy',
+    text: 'Nếu bạn đọc được thư này, Rankev đã gửi email thành công (mã quên mật khẩu, báo cáo mới…).',
+  });
+  let hint: string | undefined;
+  const err = (r.error || '').toLowerCase();
+  if (!env.RESEND_API_KEY) hint = 'Chưa đặt RESEND_API_KEY trên Render (Environment) hoặc Render chưa khởi động lại sau khi lưu.';
+  else if (err.includes('own email') || err.includes('testing emails')) hint = 'Resend chỉ cho gửi thử tới email ĐĂNG KÝ tài khoản Resend. Hãy dùng cùng một email cho tài khoản Resend và tài khoản Rankev (ADMIN_EMAILS), hoặc xác minh tên miền riêng trên Resend.';
+  else if (r.status === 401 || r.status === 403 || err.includes('api key')) hint = 'API key không hợp lệ — tạo key mới trên resend.com (quyền Sending/Full access) rồi dán lại vào Render, chú ý không thừa dấu cách.';
+  else if (err.includes('domain') || err.includes('from')) hint = 'Địa chỉ gửi (MAIL_FROM) chưa được Resend chấp nhận — để trống MAIL_FROM để dùng onboarding@resend.dev.';
+  else if (r.ok) hint = 'Đã gửi — kiểm tra hộp thư, cả mục Spam/Quảng cáo.';
+  return { ok: r.ok, to: u.email, from: env.MAIL_FROM, keySet: !!env.RESEND_API_KEY, resetRequestsLastHour: c, error: r.error, hint };
+}

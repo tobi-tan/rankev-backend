@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parse } from '../../lib/validate';
 import { authenticate, requireUserId } from '../../plugins/auth';
-import { assertAdmin, listReports, reportStats, resolveReport } from './admin.service';
+import { assertAdmin, listReports, reportStats, resolveReport, sendTestEmail } from './admin.service';
 
 const resolveSchema = z.object({
   targetType: z.enum(['post', 'comment', 'user']),
@@ -29,5 +29,12 @@ export default async function adminRoutes(app: FastifyInstance): Promise<void> {
     const input = parse(resolveSchema, req.body);
     await resolveReport(adminId, input.targetType, input.targetId, input.action, input.note);
     return reply.code(204).send();
+  });
+
+  // POST /admin/test-email — gửi thư thử tới chính quản trị viên, trả lỗi Resend nếu có (chẩn đoán)
+  app.post('/admin/test-email', { preHandler: authenticate }, async (req) => {
+    const adminId = requireUserId(req);
+    await assertAdmin(adminId);
+    return sendTestEmail(adminId);
   });
 }

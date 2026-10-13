@@ -74,4 +74,11 @@ describe('kiểm duyệt (bàn quản trị)', () => {
     // quản trị viên thứ 2 không nằm trong ADMIN_EMAILS → 403
     expect((await app.inject({ method: 'POST', url: '/admin/reports/resolve', headers: bearer(admin.accessToken), payload: { targetType: 'post', targetId: rk.id, action: 'dismiss' } })).statusCode).toBe(403);
   });
+
+  it('gửi email thử: chỉ quản trị viên; trả kết quả gửi', async () => {
+    const admin = await registerUser(app, { email: ADMIN_EMAIL.replace('@', '+mail@') });
+    void admin;
+    const u = await registerUser(app);
+    expect((await app.inject({ method: 'POST', url: '/admin/test-email', headers: bearer(u.accessToken) })).statusCode).toBe(403);
+  });
 });
