@@ -198,26 +198,35 @@ export async function reportStats(): Promise<{ open: number; overdue: number }> 
 
 /**
  * "Gửi email thử" — chẩn đoán cấu hình email ngay trong app (không cần đọc log Render):
- * gửi một thư tới CHÍNH quản trị viên và trả nguyên văn lỗi của Resend + gợi ý tiếng Việt.
+ * gửi một thư tới quản trị viên (hoặc email `to` bất kỳ — để kiểm tra người dùng KHÁC có nhận được
+ * không) và trả nguyên văn lỗi của nhà cung cấp + gợi ý tiếng Việt.
  */
-export async function sendTestEmail(adminId: string): Promise<{ ok: boolean; to: string; from: string; keySet: boolean; resetRequestsLastHour: number; error?: string; hint?: string }> {
+export async function sendTestEmail(adminId: string, toOverride?: string): Promise<{ ok: boolean; to: string; provider: string; from: string; resetRequestsLastHour: number; error?: string; hint?: string }> {
   const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, adminId));
   if (!u) throw notFound('User not found');
+  const to = toOverride?.trim() || u.email;
   const [{ c } = { c: 0 }] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(passwordResets)
     .where(and(eq(passwordResets.userId, adminId), sql`${passwordResets.createdAt} > now() - interval '1 hour'`));
   const r = await sendMail({
-    to: u.email,
+    to,
     subject: '[Rankev] Email thử — cấu hình gửi thư đã chạy',
     text: 'Nếu bạn đọc được thư này, Rankev đã gửi email thành công (mã quên mật khẩu, báo cáo mới…).',
   });
+  const from = r.provider === 'brevo' ? (env.BREVO_SENDER || env.SUPPORT_EMAIL) : env.MAIL_FROM;
   let hint: string | undefined;
   const err = (r.error || '').toLowerCase();
-  if (!env.RESEND_API_KEY) hint = 'Chưa đặt RESEND_API_KEY trên Render (Environment) hoặc Render chưa khởi động lại sau khi lưu.';
-  else if (err.includes('own email') || err.includes('testing emails')) hint = 'Resend chỉ cho gửi thử tới email ĐĂNG KÝ tài khoản Resend. Hãy dùng cùng một email cho tài khoản Resend và tài khoản Rankev (ADMIN_EMAILS), hoặc xác minh tên miền riêng trên Resend.';
-  else if (r.status === 401 || r.status === 403 || err.includes('api key')) hint = 'API key không hợp lệ — tạo key mới trên resend.com (quyền Sending/Full access) rồi dán lại vào Render, chú ý không thừa dấu cách.';
-  else if (err.includes('domain') || err.includes('from')) hint = 'Địa chỉ gửi (MAIL_FROM) chưa được Resend chấp nhận — để trống MAIL_FROM để dùng onboarding@resend.dev.';
-  else if (r.ok) hint = 'Đã gửi — kiểm tra hộp thư, cả mục Spam/Quảng cáo.';
-  return { ok: r.ok, to: u.email, from: env.MAIL_FROM, keySet: !!env.RESEND_API_KEY, resetRequestsLastHour: c, error: r.error, hint };
+  if (r.provider === 'log') hint = 'Chưa đặt BREVO_API_KEY (hoặc RESEND_API_KEY) trên Render → Environment, hoặc Render chưa khởi động lại sau khi lưu.';
+  else if (r.provider === 'brevo' && !r.ok) {
+    if (r.status === 401 || err.includes('key')) hint = 'API key Brevo không hợp lệ — vào Brevo → SMTP & API → API Keys tạo key mới rồi dán lại vào Render (không thừa dấu cách).';
+    else if (err.includes('sender') || err.includes('not valid') || err.includes('verified')) hint = `Địa chỉ gửi ${from} chưa được xác minh trên Brevo — vào Brevo → Senders, Domains & Dedicated IPs → Senders → thêm và xác minh email này.`;
+    else if (err.includes('activated')) hint = 'Tài khoản Brevo chưa được kích hoạt gửi thư giao dịch — kiểm tra email kích hoạt từ Brevo hoặc hoàn tất hồ sơ trên Brevo.';
+    else if (err.includes('ip')) hint = 'Brevo đang chặn IP lạ — vào Brevo → Security → Authorised IPs, tắt chặn IP (Render đổi IP liên tục).';
+  } else if (r.provider === 'resend' && !r.ok) {
+    if (err.includes('own email') || err.includes('testing emails')) hint = 'Resend (chưa có tên miền) chỉ gửi được tới email đăng ký tài khoản Resend. Dùng Brevo (BREVO_API_KEY) để gửi tới mọi người.';
+    else if (r.status === 401 || r.status === 403 || err.includes('api key')) hint = 'API key Resend không hợp lệ — tạo key mới rồi dán lại vào Render.';
+  }
+  if (r.ok) hint = 'Đã gửi — kiểm tra hộp thư, cả mục Spam/Quảng cáo.';
+  return { ok: r.ok, to, provider: r.provider, from, resetRequestsLastHour: c, error: r.error, hint };
 }

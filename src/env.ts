@@ -34,6 +34,10 @@ const EnvSchema = z.object({
   // --- Email (quên mật khẩu). Bỏ trống RESEND_API_KEY = chỉ in mã ra log. ---
   RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default('Rankev <onboarding@resend.dev>'),
+  // Brevo (miễn phí 300 thư/ngày, gửi qua HTTPS — Render free CHẶN cổng SMTP). Chỉ cần xác minh
+  // MỘT địa chỉ gửi (BREVO_SENDER, vd Gmail của chủ app), không cần tên miền. Có key → ưu tiên Brevo.
+  BREVO_API_KEY: z.string().optional(),
+  BREVO_SENDER: z.string().optional(), // email người gửi đã xác minh trên Brevo (mặc định = SUPPORT_EMAIL)
 
   // --- Kiểm duyệt: email QUẢN TRỊ VIÊN (cách nhau dấu phẩy) — được xem/xử lý báo cáo và nhận
   //     email khi có báo cáo mới. Bỏ trống = không ai có quyền kiểm duyệt. ---

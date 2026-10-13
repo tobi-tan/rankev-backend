@@ -35,6 +35,8 @@ export default async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/test-email', { preHandler: authenticate }, async (req) => {
     const adminId = requireUserId(req);
     await assertAdmin(adminId);
-    return sendTestEmail(adminId);
+    const to = (req.body as { to?: unknown } | undefined)?.to;
+    const email = typeof to === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) ? to.trim() : undefined;
+    return sendTestEmail(adminId, email);
   });
 }
