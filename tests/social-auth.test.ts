@@ -20,6 +20,7 @@ describe('social auth', () => {
     expect(a.user.email).toBe(email);
     expect(a.user.handle).toBeTruthy();
     expect(a.tokens.accessToken).toBeTruthy();
+    expect(a.isNew).toBe(true); // tài khoản mới → app cho đi qua phần giới thiệu
     const [row] = await db.select().from(users).where(eq(users.id, a.user.id));
     expect(row.passwordHash).toBeNull();
     expect(row.provider).toBe('google');
@@ -27,6 +28,7 @@ describe('social auth', () => {
     // Đăng nhập lại cùng provider → CÙNG user (không tạo trùng).
     const b = await socialLogin({ provider: 'google', providerId: sub, email, name: 'Google User', avatarUrl: null });
     expect(b.user.id).toBe(a.user.id);
+    expect(b.isNew).toBe(false);
   });
 
   it('liên kết provider vào tài khoản email sẵn có (trùng email)', async () => {

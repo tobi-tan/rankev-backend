@@ -69,9 +69,10 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/social', authLimit, async (req, reply) => {
     const body = parse(socialSchema, req.body);
     const profile = await verifySocialToken(body.provider, body.token);
-    const { user, tokens } = await authService.socialLogin(profile);
+    const { user, tokens, isNew } = await authService.socialLogin(profile);
     setRefreshCookie(reply, tokens);
     return reply.send({
+      isNew,
       user: toPublicUser(user, true),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,

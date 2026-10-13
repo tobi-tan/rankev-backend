@@ -89,7 +89,8 @@ async function uniqueHandle(seed: string): Promise<string> {
 }
 
 /** Đăng nhập/đăng ký bằng mạng xã hội: liên kết theo provider hoặc email, tạo mới nếu chưa có. */
-export async function socialLogin(profile: SocialProfile): Promise<{ user: User; tokens: IssuedTokens }> {
+/** isNew = vừa TẠO tài khoản (app cho đi qua phần giới thiệu). */
+export async function socialLogin(profile: SocialProfile): Promise<{ user: User; tokens: IssuedTokens; isNew: boolean }> {
   // 1) Đã liên kết provider trước đó.
   const [byProvider] = await db
     .select()
@@ -97,7 +98,7 @@ export async function socialLogin(profile: SocialProfile): Promise<{ user: User;
     .where(and(eq(users.provider, profile.provider), eq(users.providerId, profile.providerId)));
   if (byProvider) {
     const tokens = await issueTokens(byProvider.id);
-    return { user: byProvider, tokens };
+    return { user: byProvider, tokens, isNew: false };
   }
 
   // 2) Trùng email → liên kết provider vào tài khoản sẵn có.
@@ -110,7 +111,7 @@ export async function socialLogin(profile: SocialProfile): Promise<{ user: User;
         .where(eq(users.id, byEmail.id))
         .returning();
       const tokens = await issueTokens(linked.id);
-      return { user: linked, tokens };
+      return { user: linked, tokens, isNew: false };
     }
   }
 
@@ -131,7 +132,7 @@ export async function socialLogin(profile: SocialProfile): Promise<{ user: User;
     })
     .returning();
   const tokens = await issueTokens(user.id);
-  return { user, tokens };
+  return { user, tokens, isNew: true };
 }
 
 /** Validate a raw refresh token, rotate it, and issue a fresh pair. */
