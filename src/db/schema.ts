@@ -45,6 +45,8 @@ export const users = pgTable('users', {
   suspendedAt: timestamp('suspended_at', { withTimezone: true }),
   // false = handle tạm (tài khoản MXH mới) → app bắt người dùng tự chọn @handle (0035).
   handleConfirmed: boolean('handle_confirmed').notNull().default(true),
+  // Xác minh email "mềm" (0036): không chặn dùng app, chỉ nhắc. Tài khoản MXH = true.
+  emailVerified: boolean('email_verified').notNull().default(false),
   suspendReason: text('suspend_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -282,6 +284,23 @@ export const passwordResets = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ userIdx: index('password_resets_user_idx').on(t.userId, t.createdAt) }),
+);
+
+// Mã xác minh email (0036) — chỉ lưu HASH, hết hạn 30 phút, sai quá 5 lần → huỷ.
+export const emailVerifications = pgTable(
+  'email_verifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ userIdx: index('email_verifications_user_idx').on(t.userId, t.createdAt) }),
 );
 
 export const reports = pgTable(

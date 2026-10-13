@@ -10,7 +10,7 @@ afterAll(async () => { await app.close(); await pool.end(); });
 const mkUser = async () => { const h = uniqHandle(); const email = h + "@test.local"; const password = "supersecret"; await registerUser(app, { handle: h, email, password }); return { email, password }; };
 
 const codeFrom = (to: string) => {
-  const m = [...outbox].reverse().find((x) => x.to === to);
+  const m = [...outbox].reverse().find((x) => x.to === to && x.subject.includes('đặt lại mật khẩu')); // bỏ qua thư xác minh email lúc đăng ký
   return m ? (m.text.match(/\b(\d{6})\b/) || [])[1] : undefined;
 };
 

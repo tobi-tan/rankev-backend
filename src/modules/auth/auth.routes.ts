@@ -4,6 +4,9 @@ import { parse } from '../../lib/validate';
 import { toPublicUser } from '../users/users.serializer';
 import { registerSchema, loginSchema, socialSchema, forgotSchema, resetSchema } from './auth.schemas';
 import { requestPasswordReset, resetPassword } from './password-reset';
+import { sendVerificationCode, verifyEmailCode } from './email-verify';
+import { authenticate, requireUserId } from '../../plugins/auth';
+import { z } from 'zod';
 import * as authService from './auth.service';
 import type { IssuedTokens } from './auth.service';
 import { verifySocialToken, isProviderEnabled } from './social';
@@ -44,6 +47,8 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     const body = parse(registerSchema, req.body);
     const { user, tokens } = await authService.register(body);
     setRefreshCookie(reply, tokens);
+    // Xác minh email "mềm": gửi mã ngay (chạy nền — không làm chậm/hỏng đăng ký).
+    void sendVerificationCode(user.id).catch(() => {});
     // refreshToken is returned in the body for native clients (stored in secure
     // storage); web clients ignore it and rely on the httpOnly cookie.
     return reply.code(201).send({
@@ -77,6 +82,17 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     });
+  });
+
+  // Xác minh email "mềm": gửi lại mã · nhập mã (người dùng đã đăng nhập).
+  app.post('/verify-email/send', { preHandler: authenticate }, async (req) => {
+    const status = await sendVerificationCode(requireUserId(req));
+    return { status }; // 'sent' | 'already' | 'limited' | 'failed'
+  });
+  app.post('/verify-email', { preHandler: authenticate }, async (req, reply) => {
+    const { code } = parse(z.object({ code: z.string().regex(/^\d{6}$/, 'Mã gồm 6 chữ số') }), req.body);
+    await verifyEmailCode(requireUserId(req), code);
+    return reply.code(204).send();
   });
 
   // GET /auth/providers — provider nào đang bật (client ẩn nút chưa cấu hình)

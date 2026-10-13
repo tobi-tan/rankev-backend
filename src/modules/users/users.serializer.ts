@@ -20,6 +20,7 @@ export interface PublicUser {
   occupation?: string | null;
   demographicsPublic?: Record<string, boolean>;
   handleConfirmed?: boolean; // chỉ chính chủ: false → app bắt chọn @handle
+  emailVerified?: boolean;   // chỉ chính chủ: false → app nhắc xác minh email (không chặn)
 }
 
 function ageFromDob(dob: string | null | undefined): number | null {
@@ -55,6 +56,7 @@ export function toPublicUser(u: User, self = false): PublicUser {
   const age = ageFromDob(u.dateOfBirth);
   if (self) {
     base.handleConfirmed = u.handleConfirmed;
+    base.emailVerified = u.emailVerified;
     base.age = age;
     base.ageRange = u.ageRange;
     base.dateOfBirth = u.dateOfBirth;

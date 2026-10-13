@@ -131,6 +131,7 @@ export async function socialLogin(profile: SocialProfile): Promise<{ user: User;
       avatarUrl: profile.avatarUrl,
       verified: true,
       handleConfirmed: false,
+      emailVerified: true, // nhà cung cấp MXH đã xác minh email
     })
     .returning();
   const tokens = await issueTokens(user.id);
