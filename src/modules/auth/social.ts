@@ -31,7 +31,7 @@ async function verifyGoogle(idToken: string): Promise<SocialProfile> {
     provider: 'google',
     providerId: String(c.sub),
     email: c.email ? c.email.toLowerCase() : null,
-    name: c.name || (c.email ? c.email.split('@')[0] : 'Người dùng Google'),
+    name: c.name || 'Người dùng Google',
     avatarUrl: c.picture || null,
   };
 }
@@ -83,7 +83,7 @@ async function verifyApple(identityToken: string): Promise<SocialProfile> {
     provider: 'apple',
     providerId: String(payload.sub),
     email,
-    name: email ? email.split('@')[0] : 'Người dùng Apple',
+    name: 'Người dùng Apple',
     avatarUrl: null,
   };
 }

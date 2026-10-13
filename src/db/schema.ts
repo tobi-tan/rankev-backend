@@ -43,6 +43,8 @@ export const users = pgTable('users', {
   demographicsPublic: jsonb('demographics_public').$type<Record<string, boolean>>().notNull().default({}),
   // Khoá do vi phạm (migration 0034): không đăng nhập được, bài bị ẩn khỏi người khác.
   suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  // false = handle tạm (tài khoản MXH mới) → app bắt người dùng tự chọn @handle (0035).
+  handleConfirmed: boolean('handle_confirmed').notNull().default(true),
   suspendReason: text('suspend_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

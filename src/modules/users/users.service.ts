@@ -12,8 +12,9 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
     const [taken] = await db
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.handle, input.handle), ne(users.id, userId)));
-    if (taken) throw conflict('Handle already taken');
+      .where(and(sql`lower(${users.handle}) = lower(${input.handle})`, ne(users.id, userId)));
+    if (taken) throw conflict('Tên người dùng này đã có người dùng');
+    if (isReservedHandle(input.handle)) throw conflict('Tên người dùng này không được dùng');
   }
 
   // Only set provided keys (undefined = leave unchanged).
@@ -21,6 +22,7 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
   for (const k of ['name', 'handle', 'bio', 'avatarEmoji', 'avatarColor', 'avatarUrl'] as const) {
     if (input[k] !== undefined) patch[k] = input[k];
   }
+  if (input.handle) patch.handleConfirmed = true; // người dùng đã TỰ chọn @handle
 
   if (Object.keys(patch).length > 0) {
     await db.update(users).set(patch).where(eq(users.id, userId));
@@ -29,6 +31,18 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw notFound('User not found');
   return toPublicUser(user, true);
+}
+
+const RESERVED = new Set(['admin', 'administrator', 'rankev', 'support', 'hotro', 'moderator', 'mod', 'system', 'root', 'official', 'help', 'security', 'staff', 'team', 'null', 'undefined', 'me', 'user']);
+export const isReservedHandle = (h: string) => RESERVED.has(h.toLowerCase()) || /^user_[a-z0-9]{6,}$/i.test(h) || h.toLowerCase().startsWith('rankev');
+
+/** Kiểm tra @handle khi người dùng gõ: hợp lệ + còn trống (không phân biệt hoa/thường). */
+export async function checkHandle(handleRaw: string, userId: string): Promise<{ handle: string; valid: boolean; available: boolean; reason?: string }> {
+  const handle = handleRaw.replace(/^@/, '').trim();
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) return { handle, valid: false, available: false, reason: '3–20 ký tự: chữ không dấu, số hoặc _' };
+  if (isReservedHandle(handle)) return { handle, valid: true, available: false, reason: 'Tên này không được dùng' };
+  const [taken] = await db.select({ id: users.id }).from(users).where(and(sql`lower(${users.handle}) = lower(${handle})`, ne(users.id, userId)));
+  return taken ? { handle, valid: true, available: false, reason: 'Đã có người dùng' } : { handle, valid: true, available: true };
 }
 
 /** Tra hồ sơ theo @handle (không phân biệt hoa/thường, bỏ @ đầu). */

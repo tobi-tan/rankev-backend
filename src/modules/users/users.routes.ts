@@ -53,6 +53,11 @@ export default async function usersRoutes(app: FastifyInstance): Promise<void> {
       .send(JSON.stringify(data, null, 2));
   });
 
+  // GET /users/handle-check?handle=… — @handle hợp lệ + còn trống (màn chọn tên người dùng)
+  app.get<{ Querystring: { handle?: string } }>('/handle-check', { preHandler: authenticate }, async (req) => {
+    return usersService.checkHandle(String(req.query.handle || ''), requireUserId(req));
+  });
+
   // GET /users/me/posts — own posts (kèm bài trong THÙNG RÁC để hồ sơ tự tách tab)
   app.get('/me/posts', { preHandler: authenticate }, async (req) => {
     const items = await usersService.getUserPosts(requireUserId(req), true);

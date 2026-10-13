@@ -1,4 +1,4 @@
-import { and, eq, isNull, gt } from 'drizzle-orm';
+import { and, eq, isNull, gt, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, refreshTokens, type User } from '../../db/schema';
 import { hashPassword, verifyPassword } from '../../lib/password';
@@ -11,6 +11,7 @@ import {
 import { conflict, forbidden, unauthorized } from '../../lib/errors';
 import type { RegisterInput, LoginInput } from './auth.schemas';
 import type { SocialProfile } from './social';
+import { isReservedHandle } from '../users/users.service';
 
 export interface IssuedTokens {
   accessToken: string;
@@ -45,8 +46,8 @@ export async function register(input: RegisterInput): Promise<{ user: User; toke
   const [handleTaken] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.handle, input.handle));
-  if (handleTaken) throw conflict('Handle already taken');
+    .where(sql`lower(${users.handle}) = lower(${input.handle})`); // không phân biệt hoa/thường
+  if (handleTaken || isReservedHandle(input.handle)) throw conflict('Handle already taken');
 
   const passwordHash = await hashPassword(input.password);
   const [user] = await db
@@ -77,15 +78,15 @@ export async function login(input: LoginInput): Promise<{ user: User; tokens: Is
   return { user, tokens };
 }
 
-// Sinh handle duy nhất từ tên/email.
-async function uniqueHandle(seed: string): Promise<string> {
-  const base = (seed || 'user').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_]/g, '').slice(0, 20) || 'user';
-  for (let i = 0; i < 50; i++) {
-    const h = i === 0 ? base : `${base}${i}`;
+// Handle TẠM ngẫu nhiên cho tài khoản MXH mới — KHÔNG lấy từ email/tên (lộ thông tin cá nhân);
+// người dùng tự chọn @handle thật ngay sau khi đăng nhập (handle_confirmed = false).
+async function tempHandle(): Promise<string> {
+  for (let i = 0; i < 20; i++) {
+    const h = 'user_' + Math.random().toString(36).slice(2, 10).padEnd(8, '0');
     const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.handle, h));
     if (!taken) return h;
   }
-  return `${base}${Date.now().toString(36)}`;
+  return 'user_' + Date.now().toString(36);
 }
 
 /** Đăng nhập/đăng ký bằng mạng xã hội: liên kết theo provider hoặc email, tạo mới nếu chưa có. */
@@ -117,7 +118,7 @@ export async function socialLogin(profile: SocialProfile): Promise<{ user: User;
 
   // 3) Tạo tài khoản mới (không mật khẩu). Email có thể null (Apple ẩn email) → dùng placeholder.
   const email = profile.email || `${profile.provider}_${profile.providerId}@users.rankev.app`;
-  const handle = await uniqueHandle(profile.email ? profile.email.split('@')[0] : profile.name);
+  const handle = await tempHandle();
   const [user] = await db
     .insert(users)
     .values({
@@ -129,6 +130,7 @@ export async function socialLogin(profile: SocialProfile): Promise<{ user: User;
       providerId: profile.providerId,
       avatarUrl: profile.avatarUrl,
       verified: true,
+      handleConfirmed: false,
     })
     .returning();
   const tokens = await issueTokens(user.id);

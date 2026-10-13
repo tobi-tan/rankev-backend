@@ -56,3 +56,34 @@ describe('social auth', () => {
     expect(res.statusCode).toBe(prov.google ? 401 : 400);
   });
 });
+
+describe('@handle do người dùng tự chọn (không lộ email)', () => {
+  it('tài khoản MXH mới: handle tạm ngẫu nhiên, không chứa email; chọn handle → xác nhận', async () => {
+    const local = `tanle${Date.now().toString(36)}`;
+    const r = await socialLogin({ provider: 'google', providerId: `sub-h-${local}`, email: `${local}@gmail.com`, name: '', avatarUrl: null });
+    expect(r.user.handle).not.toContain(local);
+    expect(r.user.handle).toMatch(/^user_[a-z0-9]+$/);
+    expect(r.user.name).not.toContain(local);
+    const token = r.tokens.accessToken;
+    const auth = { authorization: `Bearer ${token}` };
+
+    const me = (await app.inject({ method: 'GET', url: '/users/me', headers: auth })).json();
+    expect(me.user.handleConfirmed).toBe(false);
+
+    // kiểm tra handle khi gõ: sai định dạng / dành riêng / đã có người dùng (không phân biệt hoa thường) / còn trống
+    const other = await registerUser(app);
+    const chk = async (h: string) => (await app.inject({ method: 'GET', url: `/users/handle-check?handle=${encodeURIComponent(h)}`, headers: auth })).json();
+    expect((await chk('ab')).valid).toBe(false);
+    expect((await chk('admin')).available).toBe(false);
+    expect((await chk(other.user.handle.toUpperCase())).available).toBe(false);
+    const mine = `tan_${Date.now().toString(36)}`.slice(0, 20);
+    expect((await chk(mine)).available).toBe(true);
+
+    // trùng khác hoa/thường bị từ chối khi lưu
+    expect((await app.inject({ method: 'PATCH', url: '/users/me', headers: auth, payload: { handle: other.user.handle.toUpperCase() } })).statusCode).toBe(409);
+    const ok = await app.inject({ method: 'PATCH', url: '/users/me', headers: auth, payload: { handle: mine, name: 'Tân' } });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().user.handleConfirmed).toBe(true);
+    expect(ok.json().user.handle).toBe(mine);
+  });
+});

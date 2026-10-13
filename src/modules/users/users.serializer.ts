@@ -19,6 +19,7 @@ export interface PublicUser {
   gender?: string | null;
   occupation?: string | null;
   demographicsPublic?: Record<string, boolean>;
+  handleConfirmed?: boolean; // chỉ chính chủ: false → app bắt chọn @handle
 }
 
 function ageFromDob(dob: string | null | undefined): number | null {
@@ -53,6 +54,7 @@ export function toPublicUser(u: User, self = false): PublicUser {
   const pub = (u.demographicsPublic || {}) as Record<string, boolean>;
   const age = ageFromDob(u.dateOfBirth);
   if (self) {
+    base.handleConfirmed = u.handleConfirmed;
     base.age = age;
     base.ageRange = u.ageRange;
     base.dateOfBirth = u.dateOfBirth;
