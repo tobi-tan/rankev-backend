@@ -5,6 +5,7 @@ import { pool, db } from '../src/db';
 import { posts, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
 import { ensureClassics, CLASSICS_SERIES } from '../src/modules/classics/classics';
+import { outbox } from '../src/lib/mailer';
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -38,5 +39,19 @@ describe('nội dung kinh điển của @rankev', () => {
     // không ai đăng ký được handle "rankev"
     const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: `x${Date.now()}@t.local`, password: 'supersecret', handle: 'Rankev', name: 'Giả mạo' } });
     expect(reg.statusCode).toBe(409);
+  });
+
+  it('gắn OFFICIAL_EMAIL → quên mật khẩu → đăng nhập được vào @rankev để tự đăng bài', async () => {
+    const email = `brand_${Date.now()}@test.local`;
+    process.env.OFFICIAL_EMAIL = email;
+    await ensureClassics();
+    delete process.env.OFFICIAL_EMAIL;
+    expect((await app.inject({ method: 'POST', url: '/auth/forgot', payload: { email } })).statusCode).toBe(204);
+    const mail = [...outbox].reverse().find((m) => m.to === email && m.subject.includes('đặt lại mật khẩu'));
+    const code = (mail!.text.match(/\b(\d{6})\b/) || [])[1];
+    expect((await app.inject({ method: 'POST', url: '/auth/reset', payload: { email, code, password: 'MatKhauRankev1' } })).statusCode).toBe(204);
+    const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'MatKhauRankev1' } });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().user.handle).toBe('rankev');
   });
 });

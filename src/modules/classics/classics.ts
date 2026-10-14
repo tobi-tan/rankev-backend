@@ -42,11 +42,22 @@ const MATCHUPS: { title: string; caption: string; tags: string[]; a: Side; b: Si
   { title: 'Chơi game hay Xem phim?', caption: 'Tối rảnh rỗi, bạn mở gì đầu tiên?', tags: ['kinhdien', 'giaitri'], a: ['Chơi game', '1f3ae'], b: ['Xem phim', '1f3ac'] },
 ];
 
+// Email đăng nhập của @rankev = env OFFICIAL_EMAIL (Gmail thương hiệu do chủ app giữ). Đặt env rồi
+// khởi động lại → email được gắn vào @rankev; chủ app dùng "Quên mật khẩu" với email đó để đặt
+// mật khẩu và đăng nhập đăng bài dưới tên Rankev (như Trang chính thức trên Facebook).
 async function ensureOfficial(): Promise<string> {
-  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.handle, OFFICIAL.handle));
-  if (u) return u.id;
+  const want = (process.env.OFFICIAL_EMAIL || '').trim().toLowerCase();
+  const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.handle, OFFICIAL.handle));
+  if (u) {
+    if (want && u.email !== want) {
+      const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, want));
+      if (!taken) await db.update(users).set({ email: want, emailVerified: true }).where(eq(users.id, u.id));
+      else if (taken.id !== u.id) console.warn('[classics] OFFICIAL_EMAIL đã thuộc một tài khoản khác — không gắn vào @rankev');
+    }
+    return u.id;
+  }
   const [created] = await db.insert(users).values({
-    email: OFFICIAL.email, handle: OFFICIAL.handle, name: OFFICIAL.name, avatarUrl: OFFICIAL.avatarUrl,
+    email: want || OFFICIAL.email, handle: OFFICIAL.handle, name: OFFICIAL.name, avatarUrl: OFFICIAL.avatarUrl,
     bio: 'Tài khoản chính thức của Rankev · Đối đầu kinh điển, đố vui & khảo sát cho mọi người 🏆',
     verified: true, passwordHash: null, handleConfirmed: true, emailVerified: true,
   }).returning({ id: users.id });
