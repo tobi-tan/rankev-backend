@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { pool, db } from '../src/db';
-import { posts, series, seriesPosts, users } from '../src/db/schema';
+import { passwordResets, posts, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
 import { ensureClassics, CLASSICS_SERIES } from '../src/modules/classics/classics';
 import { outbox } from '../src/lib/mailer';
@@ -13,6 +13,7 @@ afterAll(async () => { await app.close(); await pool.end(); });
 
 describe('nội dung kinh điển của @rankev', () => {
   it('tạo series đối đầu + path/survey/exam; chạy lại không tạo trùng; người dùng bình chọn được', async () => {
+    await db.update(users).set({ passwordHash: null }).where(eq(users.handle, 'rankev'));
     await ensureClassics();
     expect(await ensureClassics()).toBe(0); // idempotent
 
@@ -46,6 +47,9 @@ describe('nội dung kinh điển của @rankev', () => {
     process.env.OFFICIAL_EMAIL = email;
     await ensureClassics();
     delete process.env.OFFICIAL_EMAIL;
+    // DB test dùng chung giữa các lần chạy: xoá lịch sử mã cũ (giới hạn 3 mã/giờ/tài khoản)
+    const [off] = await db.select({ id: users.id }).from(users).where(eq(users.handle, 'rankev'));
+    await db.delete(passwordResets).where(eq(passwordResets.userId, off.id));
     expect((await app.inject({ method: 'POST', url: '/auth/forgot', payload: { email } })).statusCode).toBe(204);
     const mail = [...outbox].reverse().find((m) => m.to === email && m.subject.includes('đặt lại mật khẩu'));
     const code = (mail!.text.match(/\b(\d{6})\b/) || [])[1];
@@ -53,5 +57,7 @@ describe('nội dung kinh điển của @rankev', () => {
     const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'MatKhauRankev1' } });
     expect(login.statusCode).toBe(200);
     expect(login.json().user.handle).toBe('rankev');
+    // dọn dẹp: trả @rankev về trạng thái không mật khẩu (DB test dùng chung giữa các lần chạy)
+    await db.update(users).set({ passwordHash: null, email: 'official@rankev.local' }).where(eq(users.handle, 'rankev'));
   });
 });
