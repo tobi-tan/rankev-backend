@@ -184,6 +184,21 @@ export async function alertAdminsOfReport(targetType: TargetType, targetId: stri
   await Promise.all(adminEmails.map((to) => sendMail({ to, subject: `[Rankev] Báo cáo mới: ${label} — ${reason}`, text }).catch(() => null)));
 }
 
+/**
+ * "CHUYỂN SANG RANKEV" (như chủ Trang Facebook chuyển sang Trang): quản trị viên nhận một phiên
+ * đăng nhập của tài khoản chính thức @rankev để đăng bài / trả lời dưới tên thương hiệu — @rankev
+ * không có mật khẩu nên chỉ vào được bằng đường này. App giữ phiên cá nhân để "Quay về".
+ */
+export async function actAsOfficial(adminId: string) {
+  await assertAdmin(adminId);
+  const [official] = await db.select().from(users).where(eq(users.handle, 'rankev'));
+  if (!official) throw notFound('Chưa có tài khoản chính thức @rankev');
+  const { issueTokens } = await import('../auth/auth.service');
+  const tokens = await issueTokens(official.id);
+  console.info('[admin] quản trị viên', adminId, 'chuyển sang @rankev');
+  return { user: { id: official.id, handle: official.handle, name: official.name }, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+}
+
 /** Thống kê nhanh cho bàn kiểm duyệt. */
 export async function reportStats(): Promise<{ open: number; overdue: number }> {
   const [r] = await db

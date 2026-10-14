@@ -11,6 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { pool } from '../src/db';
 import { outbox } from '../src/lib/mailer';
 import { buildApp, registerUser, createRankie, bearer } from './helpers';
+import { ensureClassics } from '../src/modules/classics/classics';
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -80,5 +81,22 @@ describe('kiểm duyệt (bàn quản trị)', () => {
     void admin;
     const u = await registerUser(app);
     expect((await app.inject({ method: 'POST', url: '/admin/test-email', headers: bearer(u.accessToken) })).statusCode).toBe(403);
+  });
+
+  it('chủ app (quản trị viên) chuyển sang @rankev để đăng bài; người thường không được', async () => {
+    await ensureClassics();
+    const admin = await registerUser(app, { email: ADMIN_EMAIL.replace('@', '+page@') });
+    void admin;
+    const owner = (await app.inject({ method: 'POST', url: '/auth/login', payload: { email: ADMIN_EMAIL, password: 'supersecret' } })).json();
+    const normal = await registerUser(app);
+    expect((await app.inject({ method: 'POST', url: '/admin/act-as-official', headers: bearer(normal.accessToken) })).statusCode).toBe(403);
+
+    const r = await app.inject({ method: 'POST', url: '/admin/act-as-official', headers: bearer(owner.accessToken) });
+    expect(r.statusCode).toBe(200);
+    const me = (await app.inject({ method: 'GET', url: '/users/me', headers: bearer(r.json().accessToken) })).json();
+    expect(me.user.handle).toBe('rankev');
+    expect(me.isAdmin).toBe(false); // đang là Rankev: không có quyền quản trị
+    const post = await createRankie(app, r.json().accessToken, { title: 'Trận kinh điển mới' });
+    expect(post.author?.handle ?? me.user.handle).toBe('rankev');
   });
 });
