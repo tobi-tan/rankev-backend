@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mediaSchema } from '../../lib/media-schema';
 
 const contestantSchema = z.object({
   name: z.string().min(1).max(80),
@@ -16,7 +17,7 @@ export const createTournamentSchema = z.object({
   tags: z.array(z.string().max(60)).max(20).optional(), // hashtag tự do
 
   caption: z.string().max(2000).optional(),
-  media: z.object({ type: z.string().optional(), color: z.string().optional(), emoji: z.string().optional(), url: z.string().url().optional() }).optional(),
+  media: mediaSchema.optional(),
   // Thời gian bình chọn mỗi vòng (giờ kể từ khi ván mở). null/absent = vô hạn.
   closesInHours: z.number().int().min(1).max(8760).nullable().optional(),
   allowGuestPresent: z.boolean().optional(),

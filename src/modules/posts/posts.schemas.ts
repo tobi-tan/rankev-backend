@@ -1,13 +1,7 @@
 import { z } from 'zod';
+import { mediaSchema as sharedMediaSchema } from '../../lib/media-schema';
 
-const mediaSchema = z
-  .object({
-    type: z.string().optional(),
-    color: z.string().optional(),
-    emoji: z.string().optional(),
-    url: z.string().url().optional(),
-  })
-  .optional();
+const mediaSchema = sharedMediaSchema.optional();
 
 const refTypeSchema = z.enum(['post', 'user', 'comment']);
 

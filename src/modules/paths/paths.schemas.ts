@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mediaSchema } from '../../lib/media-schema';
 
 const pathAnswerSchema = z.object({
   label: z.string().max(120).optional(),
@@ -32,8 +33,7 @@ export const createPathSchema = z.object({
   subtitle: z.string().max(200).optional(),
   caption: z.string().max(2000).optional(),
   category: z.string().max(80).optional(),
-  media: z
-    .object({ type: z.string().optional(), color: z.string().optional(), emoji: z.string().optional(), url: z.string().url().optional() })
+  media: mediaSchema
     .optional(),
   revealMode: z.enum(['all', 'names', 'stats', 'hidden']).default('hidden'),
   hideEndingCount: z.boolean().optional().default(false),

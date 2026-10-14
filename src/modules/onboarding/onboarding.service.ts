@@ -15,6 +15,11 @@ export const ONBOARDING_OPTIONS: Record<string, string[]> = {
   occupation: ['Học sinh/Sinh viên', 'Văn phòng', 'Kinh doanh', 'Kỹ thuật/IT', 'Sáng tạo/Nghệ thuật', 'Khác'],
   terms: ['all', 'skim', 'agree'], // "Bạn đã đọc hết điều khoản…?" — đọc hết · đọc lướt · bấm đồng ý luôn
   flat_earth: ['yes', 'no'], // câu hỏi tò mò: "Bạn có tin Trái Đất phẳng?"
+  // Màn chơi thử trong phần giới thiệu (mỗi màn = một tính năng thật của Rankev):
+  h2h: ['pho', 'buncha'],                                   // Đối đầu: Phở hay Bún chả?
+  persona: ['explorer', 'strategist', 'social', 'creator'], // Path: bạn là kiểu người Rankev nào?
+  screen: ['<1', '1-3', '3-5', '5+'],                       // Survey: giờ lướt mạng xã hội mỗi ngày
+  quiz: ['0', '1', '2', '3'],                               // Exam: số câu đúng / 3
 };
 const MULTI_KEYS = new Set(['type']);
 

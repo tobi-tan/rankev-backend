@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mediaSchema } from '../../lib/media-schema';
 
 const deckOptionSchema = z.object({
   label: z.string().max(200).optional(),
@@ -22,8 +23,7 @@ export const createDeckSchema = z.object({
   subtitle: z.string().max(200).optional(),
   caption: z.string().max(2000).optional(),
   category: z.string().max(80).optional(),
-  media: z
-    .object({ type: z.string().optional(), color: z.string().optional(), emoji: z.string().optional(), url: z.string().url().optional() })
+  media: mediaSchema
     .optional(),
   examDurationMinutes: z.number().int().positive().optional(),
   passingScore: z.number().min(0).optional(),
