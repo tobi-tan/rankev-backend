@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { pool, db } from '../src/db';
 import { passwordResets, posts, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
-import { ensureClassics, CLASSICS_SERIES } from '../src/modules/classics/classics';
+import { ensureClassics, LEGACY_CLASSICS_SERIES } from '../src/modules/classics/classics';
 import { outbox } from '../src/lib/mailer';
 
 let app: FastifyInstance;
@@ -20,10 +20,13 @@ describe('nội dung kinh điển của @rankev', () => {
     const [official] = await db.select().from(users).where(eq(users.handle, 'rankev'));
     expect(official.verified).toBe(true);
     expect(official.passwordHash).toBeNull(); // không ai đăng nhập được
-    const [ser] = await db.select().from(series).where(eq(series.name, CLASSICS_SERIES));
-    const chapters = await db.select().from(seriesPosts).where(eq(seriesPosts.seriesId, ser.id));
-    expect(chapters.length).toBe(16);
-    const mine = await db.select({ type: posts.type, deckMode: posts.deckMode }).from(posts).where(eq(posts.authorId, official.id));
+    // không gom series: mỗi trận là một bài riêng, gắn #kinhdien
+    expect((await db.select().from(series).where(eq(series.name, LEGACY_CLASSICS_SERIES))).length).toBe(0);
+    const mine = await db.select({ type: posts.type, deckMode: posts.deckMode, chartType: posts.chartType, tags: posts.tags, id: posts.id }).from(posts).where(eq(posts.authorId, official.id));
+    const duels = mine.filter((p) => p.chartType === 'head_to_head' && Array.isArray(p.tags) && (p.tags as string[]).includes('kinhdien'));
+    expect(duels.length).toBeGreaterThanOrEqual(16);
+    const linked = await db.select().from(seriesPosts).where(inArray(seriesPosts.postId, duels.map((d) => d.id)));
+    expect(linked.length).toBe(0);
     expect(mine.filter((p) => p.type === 'path').length).toBe(1);
     expect(mine.filter((p) => p.deckMode === 'exam').length).toBe(1);
     expect(mine.filter((p) => p.deckMode === 'survey').length).toBe(1);

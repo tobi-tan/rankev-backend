@@ -7,12 +7,12 @@ import { createPath } from '../paths/paths.service';
 import { createPathSchema } from '../paths/paths.schemas';
 import { createDeck } from '../decks/decks.service';
 import { createDeckSchema } from '../decks/decks.schemas';
-import { addPost, createSeries } from '../series/series.service';
 
 /**
  * NỘI DUNG KINH ĐIỂN của tài khoản chính thức @rankev — để lúc còn ít người dùng / ít bài mới,
  * ai vào cũng có thứ để bình chọn, tranh luận. KHÔNG có phiếu giả: mọi con số do người thật bình chọn.
- *  - Series "Đối đầu kinh điển ⚔️" (mỗi trận một chapter → carousel vuốt ngang trên feed)
+ *  - 16 trận ĐỐI ĐẦU, mỗi trận là MỘT BÀI RIÊNG gắn #kinhdien (không gom series — trận nào hot tự
+ *    nổi lên feed / tìm kiếm theo tương tác của chính nó; #kinhdien là nơi gom nhẹ để khám phá)
  *  - Path / Survey / Exam kinh điển
  * Chạy khi máy chủ khởi động (idempotent: bài nào đã có — theo tiêu đề của @rankev — thì bỏ qua),
  * nên muốn thêm trận mới chỉ cần thêm vào danh sách dưới đây rồi deploy.
@@ -20,7 +20,8 @@ import { addPost, createSeries } from '../series/series.service';
  */
 const TW = (code: string) => `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${code}.svg`;
 const OFFICIAL = { email: 'official@rankev.local', handle: 'rankev', name: 'Rankev', avatarUrl: 'https://rankev-web.vercel.app/icon-192.png' };
-export const CLASSICS_SERIES = 'Đối đầu kinh điển ⚔️';
+// Tên series cũ (2026-10-14) — đã bỏ, dọn đi khi khởi động (bài/phiếu/bình luận giữ nguyên).
+export const LEGACY_CLASSICS_SERIES = 'Đối đầu kinh điển ⚔️';
 
 type Side = [label: string, twemoji: string];
 const MATCHUPS: { title: string; caption: string; tags: string[]; a: Side; b: Side }[] = [
@@ -74,17 +75,15 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
   const have = await existingTitles(authorId);
   let created = 0;
 
-  // Series "Đối đầu kinh điển"
-  let [ser] = await db.select({ id: series.id }).from(series).where(and(eq(series.authorId, authorId), eq(series.name, CLASSICS_SERIES)));
-  if (!ser) ser = await createSeries(authorId, CLASSICS_SERIES);
+  // Bỏ series cũ: mỗi trận đứng riêng (xoá series → chỉ gỡ liên kết chapter, bài giữ nguyên)
+  await db.delete(series).where(and(eq(series.authorId, authorId), eq(series.name, LEGACY_CLASSICS_SERIES)));
   for (const m of MATCHUPS) {
     if (have.has(m.title)) continue;
-    const p = await createRankie(authorId, createRankieSchema.parse({
+    await createRankie(authorId, createRankieSchema.parse({
       type: 'rankie', title: m.title, caption: m.caption, tags: m.tags, category: 'Kinh điển',
       votingType: 'single', chartType: 'head_to_head', live: true, sponsored: false, allowGuestPresent: true,
       options: [{ label: m.a[0], imageUrl: TW(m.a[1]) }, { label: m.b[0], imageUrl: TW(m.b[1]) }],
     }));
-    await addPost(ser.id, authorId, p.id);
     created++;
   }
 
