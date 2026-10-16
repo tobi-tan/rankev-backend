@@ -1,6 +1,7 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { posts, series, users } from '../../db/schema';
+import { posts, rankieOptions, series, users } from '../../db/schema';
+import { CLASSIC_IMAGES } from './classics-images';
 import { createRankie } from '../posts/posts.service';
 import { createRankieSchema } from '../posts/posts.schemas';
 import { createPath } from '../paths/paths.service';
@@ -65,6 +66,28 @@ async function ensureOfficial(): Promise<string> {
   return created.id;
 }
 
+// Dòng ghi nguồn ảnh (bắt buộc với CC BY / CC BY-SA) ở cuối mô tả bài.
+const CREDIT_MARK = '📷 Ảnh:';
+function withCredit(caption: string, la: string, lb: string, img?: (typeof CLASSIC_IMAGES)[string]): string {
+  if (!img) return caption;
+  const c = (label: string, i: { artist: string; license: string }) => `${label} — ${i.artist || 'không rõ tác giả'} (${i.license})`;
+  return `${caption}\n\n${CREDIT_MARK} ${c(la, img.a)}; ${c(lb, img.b)} · Wikimedia Commons`;
+}
+
+/** Trận đã có (bản thật): thay ảnh emoji bằng ảnh thật + thêm dòng ghi nguồn — phiếu/bình luận giữ nguyên. */
+async function syncImages(authorId: string, title: string, caption: string, la: string, lb: string): Promise<void> {
+  const img = CLASSIC_IMAGES[title];
+  if (!img) return;
+  const [p] = await db.select({ id: posts.id, caption: posts.caption }).from(posts).where(and(eq(posts.authorId, authorId), eq(posts.title, title)));
+  if (!p) return;
+  for (const [label, url] of [[la, img.a.url], [lb, img.b.url]] as const) {
+    await db.update(rankieOptions).set({ imageUrl: url }).where(and(eq(rankieOptions.rankieId, p.id), eq(rankieOptions.label, label), sql`(${rankieOptions.imageUrl} IS NULL OR ${rankieOptions.imageUrl} LIKE '%twemoji%')`)); // chỉ thay ảnh emoji cũ — ảnh chủ app tự đổi thì giữ
+  }
+  if (!(p.caption || '').includes(CREDIT_MARK)) {
+    await db.update(posts).set({ caption: withCredit(p.caption || caption, la, lb, img) }).where(eq(posts.id, p.id));
+  }
+}
+
 async function existingTitles(authorId: string): Promise<Set<string>> {
   const rows = await db.select({ title: posts.title }).from(posts).where(eq(posts.authorId, authorId));
   return new Set(rows.map((r) => r.title));
@@ -78,11 +101,12 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
   // Bỏ series cũ: mỗi trận đứng riêng (xoá series → chỉ gỡ liên kết chapter, bài giữ nguyên)
   await db.delete(series).where(and(eq(series.authorId, authorId), eq(series.name, LEGACY_CLASSICS_SERIES)));
   for (const m of MATCHUPS) {
-    if (have.has(m.title)) continue;
+    const img = CLASSIC_IMAGES[m.title];
+    if (have.has(m.title)) { await syncImages(authorId, m.title, m.caption, m.a[0], m.b[0]); continue; }
     await createRankie(authorId, createRankieSchema.parse({
-      type: 'rankie', title: m.title, caption: m.caption, tags: m.tags, category: 'Kinh điển',
+      type: 'rankie', title: m.title, caption: withCredit(m.caption, m.a[0], m.b[0], img), tags: m.tags, category: 'Kinh điển',
       votingType: 'single', chartType: 'head_to_head', live: true, sponsored: false, allowGuestPresent: true,
-      options: [{ label: m.a[0], imageUrl: TW(m.a[1]) }, { label: m.b[0], imageUrl: TW(m.b[1]) }],
+      options: [{ label: m.a[0], imageUrl: img?.a.url || TW(m.a[1]) }, { label: m.b[0], imageUrl: img?.b.url || TW(m.b[1]) }],
     }));
     created++;
   }

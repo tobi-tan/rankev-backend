@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { eq, inArray } from 'drizzle-orm';
 import { pool, db } from '../src/db';
-import { passwordResets, posts, series, seriesPosts, users } from '../src/db/schema';
+import { passwordResets, posts, rankieOptions, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
 import { ensureClassics, LEGACY_CLASSICS_SERIES } from '../src/modules/classics/classics';
 import { outbox } from '../src/lib/mailer';
@@ -80,5 +80,26 @@ describe('nội dung kinh điển của @rankev', () => {
     const full = (await app.inject({ method: 'GET', url: `/posts/${target.id}`, headers: bearer(u.accessToken) })).json();
     await app.inject({ method: 'POST', url: `/rankies/${target.id}/vote`, headers: bearer(u.accessToken), payload: { optionIds: [full.options[0].id] } });
     expect((await get()).some((x) => x.id === target.id)).toBe(false);
+  });
+
+  it('ảnh thật Wikimedia + dòng ghi nguồn; ảnh chủ app tự đổi thì không bị ghi đè', async () => {
+    await ensureClassics();
+    const [pho] = await db.select().from(posts).where(eq(posts.title, 'Phở hay Bún chả?'));
+    const opts = await db.select().from(rankieOptions).where(eq(rankieOptions.rankieId, pho.id));
+    expect(opts.every((o) => (o.imageUrl || '').includes('wikimedia.org'))).toBe(true);
+    expect(pho.caption).toContain('📷 Ảnh:');
+    expect(pho.caption).toContain('Wikimedia Commons');
+    // chủ app tự đổi ảnh Phở → khởi động lại không ghi đè
+    const mine = 'https://example.com/pho-cua-toi.jpg';
+    await db.update(rankieOptions).set({ imageUrl: mine }).where(eq(rankieOptions.id, opts.find((o) => o.label === 'Phở')!.id));
+    await ensureClassics();
+    const after = await db.select().from(rankieOptions).where(eq(rankieOptions.rankieId, pho.id));
+    expect(after.find((o) => o.label === 'Phở')!.imageUrl).toBe(mine);
+    // trận nhân vật / thương hiệu giữ emoji
+    const [tom] = await db.select().from(posts).where(eq(posts.title, 'Tom hay Jerry?'));
+    const tomOpts = await db.select().from(rankieOptions).where(eq(rankieOptions.rankieId, tom.id));
+    expect(tomOpts.every((o) => (o.imageUrl || '').includes('twemoji'))).toBe(true);
+    // dọn: trả ảnh Phở về để lần chạy sau không lệch
+    await db.update(rankieOptions).set({ imageUrl: null }).where(eq(rankieOptions.id, opts.find((o) => o.label === 'Phở')!.id));
   });
 });
