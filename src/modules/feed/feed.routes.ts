@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parse } from '../../lib/validate';
 import { authenticate, optionalAuth, requireUserId } from '../../plugins/auth';
-import { listFeed, listTrendingTags, searchAll } from './feed.service';
+import { listClassics, listFeed, listTrendingTags, searchAll } from './feed.service';
 import { listTournamentFeed } from '../tournaments/tournaments.service';
 
 const feedQuerySchema = z.object({
@@ -17,6 +17,12 @@ export default async function feedRoutes(app: FastifyInstance): Promise<void> {
   app.get('/feed', { preHandler: optionalAuth }, async (req) => {
     const query = parse(feedQuerySchema, req.query);
     return listFeed(query, req.user?.id);
+  });
+
+  // GET /feed/classics — thẻ gợi ý "Đối đầu kinh điển": trận #kinhdien của @rankev mà người xem chưa vote
+  app.get('/feed/classics', { preHandler: optionalAuth }, async (req) => {
+    const q = parse(z.object({ limit: z.coerce.number().int().min(1).max(30).default(12) }), req.query);
+    return { items: await listClassics(req.user?.id, q.limit) };
   });
 
   // GET /users/me/feed — personalized feed (spec alias; hides blocked authors)

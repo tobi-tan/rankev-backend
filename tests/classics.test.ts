@@ -63,4 +63,22 @@ describe('nội dung kinh điển của @rankev', () => {
     // dọn dẹp: trả @rankev về trạng thái không mật khẩu (DB test dùng chung giữa các lần chạy)
     await db.update(users).set({ passwordHash: null, email: 'official@rankev.local' }).where(eq(users.handle, 'rankev'));
   });
+
+  it('thẻ gợi ý /feed/classics: chỉ trận #kinhdien của @rankev chưa vote; vote xong thì biến mất', async () => {
+    await ensureClassics();
+    const u = await registerUser(app);
+    const get = async () => (await app.inject({ method: 'GET', url: '/feed/classics?limit=30', headers: bearer(u.accessToken) })).json().items as { id: string; title: string; tags: string[]; author: { handle: string } }[];
+    const before = await get();
+    expect(before.length).toBeGreaterThanOrEqual(16);
+    expect(before.every((x) => x.author.handle === 'rankev' && x.tags.includes('kinhdien'))).toBe(true);
+    // người thường gắn #kinhdien không lọt vào gợi ý
+    const fake = await app.inject({ method: 'POST', url: '/posts', headers: bearer(u.accessToken), payload: { type: 'rankie', title: 'Giả kinh điển', votingType: 'single', chartType: 'head_to_head', tags: ['kinhdien'], options: [{ label: 'A' }, { label: 'B' }] } });
+    expect(fake.statusCode).toBe(201);
+    expect((await get()).some((x) => x.title === 'Giả kinh điển')).toBe(false);
+    // vote một trận → không còn trong gợi ý
+    const target = before[0];
+    const full = (await app.inject({ method: 'GET', url: `/posts/${target.id}`, headers: bearer(u.accessToken) })).json();
+    await app.inject({ method: 'POST', url: `/rankies/${target.id}/vote`, headers: bearer(u.accessToken), payload: { optionIds: [full.options[0].id] } });
+    expect((await get()).some((x) => x.id === target.id)).toBe(false);
+  });
 });

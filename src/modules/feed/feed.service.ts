@@ -429,3 +429,37 @@ export async function summariesByIds(ids: string[], _viewerId?: string): Promise
   const byId = new Map(summaries.map((s) => [s.id, s]));
   return ids.map((id) => byId.get(id)).filter((s): s is FeedSummary => Boolean(s));
 }
+
+/**
+ * THẺ GỢI Ý "ĐỐI ĐẦU KINH ĐIỂN" trên feed: các trận #kinhdien của tài khoản chính thức @rankev mà
+ * người xem CHƯA bình chọn. Trận nóng (nhiều phiếu + bình luận) đứng trước, xáo nhẹ để mỗi lần mở
+ * mỗi khác. Chỉ lấy bài của @rankev (người khác gắn #kinhdien không lọt vào đây).
+ */
+export async function listClassics(viewerId: string | undefined, limit = 12): Promise<FeedSummary[]> {
+  const [official] = await db.select({ id: users.id }).from(users).where(eq(users.handle, 'rankev'));
+  if (!official) return [];
+  const conds = [
+    eq(posts.authorId, official.id),
+    eq(posts.type, 'rankie'),
+    isNull(posts.deletedAt),
+    sql`COALESCE(${posts.tags}, '[]'::jsonb) @> '["kinhdien"]'::jsonb`,
+    listablePostCond(viewerId),
+  ];
+  if (viewerId) {
+    conds.push(sql`NOT EXISTS (SELECT 1 FROM votes v WHERE v.rankie_id = ${posts.id} AND v.user_id = ${viewerId})`);
+    conds.push(...feedExclusions(viewerId, posts.authorId, posts.id));
+  }
+  const rows = await db
+    .select({ post: posts, author: users })
+    .from(posts)
+    .leftJoin(users, eq(users.id, posts.authorId))
+    .where(and(...conds))
+    .orderBy(desc(posts.createdAt))
+    .limit(60);
+  const items = await buildSummaries(rows);
+  return items
+    .map((it) => ({ it, s: it.engagement + 2 * it.commentsCount + Math.random() * 3 }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit)
+    .map((x) => x.it);
+}
