@@ -94,6 +94,9 @@ export async function castVote(
   validateSelection(post.votingType, selected, validIds.size);
 
   await db.transaction(async (tx) => {
+    // Khoá theo (người, rankie): FOR UPDATE không khoá được dòng CHƯA tồn tại → 2 lần bấm dồn dập
+    // cùng INSERT → lỗi trùng khoá votes_user_id_rankie_id_key. Khoá tư vấn tuần tự hoá chúng.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId + ':' + rankieId}))`);
     const [existing] = await tx
       .select()
       .from(votes)
@@ -165,6 +168,9 @@ export async function removeVote(userId: string, rankieId: string): Promise<{ my
   if (post.closesAt && post.closesAt.getTime() <= Date.now()) throw forbidden('Voting for this Rankie has closed');
 
   await db.transaction(async (tx) => {
+    // Khoá theo (người, rankie): FOR UPDATE không khoá được dòng CHƯA tồn tại → 2 lần bấm dồn dập
+    // cùng INSERT → lỗi trùng khoá votes_user_id_rankie_id_key. Khoá tư vấn tuần tự hoá chúng.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId + ':' + rankieId}))`);
     const [existing] = await tx
       .select()
       .from(votes)

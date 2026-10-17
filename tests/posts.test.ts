@@ -192,4 +192,27 @@ describe('posts + rankie', () => {
     expect(feed.statusCode).toBe(200);
     expect(feed.json().items.some((i: any) => i.id === rk.id)).toBe(true);
   });
+
+  it('2 lần vote dồn dập cùng lúc (bấm đúp) không lỗi trùng khoá, chỉ tính 1 phiếu', async () => {
+    const { accessToken } = await registerUser(app);
+    const rk = await createRankie(app, accessToken, { title: 'Bấm đúp' });
+    const [a, b] = rk.options;
+    const shots = await Promise.all([a.id, a.id, b.id, a.id].map((id) =>
+      app.inject({ method: 'POST', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken), payload: { optionIds: [id] } })));
+    expect(shots.map((r) => r.statusCode)).toEqual([200, 200, 200, 200]);
+    const res = await app.inject({ method: 'GET', url: `/posts/${rk.id}`, headers: bearer(accessToken) });
+    const total = res.json().options.reduce((n: number, o: { votes: number }) => n + o.votes, 0);
+    expect(total).toBe(1);
+  });
+
+  it('feed giữ thứ tự gốc của lựa chọn (đối đầu không đổi bên khi B dẫn)', async () => {
+    const { accessToken } = await registerUser(app);
+    const rk = await createRankie(app, accessToken, { title: 'Thứ tự A/B', options: [{ label: 'Bên A' }, { label: 'Bên B' }] });
+    await app.inject({ method: 'POST', url: `/rankies/${rk.id}/vote`, headers: bearer(accessToken), payload: { optionIds: [rk.options[1].id] } });
+    const feed = await app.inject({ method: 'GET', url: '/feed?limit=50', headers: bearer(accessToken) });
+    const item = feed.json().items.find((i: { id: string }) => i.id === rk.id);
+    expect(item).toBeTruthy();
+    expect(item.options.map((o: { label: string }) => o.label)).toEqual(['Bên A', 'Bên B']);
+    expect(item.options[1].votes).toBe(1);
+  });
 });

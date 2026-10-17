@@ -141,10 +141,11 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
             imageUrl: rankieOptions.imageUrl,
             votes: rankieOptions.votes,
             color: rankieOptions.color,
+            position: rankieOptions.position,
           })
           .from(rankieOptions)
           .where(inArray(rankieOptions.rankieId, rankieIds))
-      : Promise.resolve([] as { rankieId: string; label: string | null; emoji: string | null; imageUrl: string | null; votes: number; color: string | null }[]),
+      : Promise.resolve([] as { rankieId: string; label: string | null; emoji: string | null; imageUrl: string | null; votes: number; color: string | null; position: number }[]),
     pathIds.length
       ? db
           .select({ id: pathEndings.postId, c: count() })
@@ -187,18 +188,19 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
     matchRowsP,
   ]);
 
-  // Group rankie options → total votes, count, and top-4 sorted desc.
-  const rankieAgg = new Map<string, { total: number; size: number; top: FeedOption[] }>();
+  // Group rankie options → total votes, count, and top-4 (CHỌN theo số phiếu nhưng TRẢ VỀ theo
+  // thứ tự gốc — đối đầu A/B không được đổi bên khi bên B vượt lên; thẻ xếp hạng tự sort theo phiếu).
+  const rankieAgg = new Map<string, { total: number; size: number; top: (FeedOption & { pos: number })[] }>();
   for (const o of rankieOptRows) {
     const a = rankieAgg.get(o.rankieId) ?? { total: 0, size: 0, top: [] };
     a.total += Number(o.votes);
     a.size += 1;
-    a.top.push({ label: o.label, emoji: o.emoji, imageUrl: o.imageUrl, votes: Number(o.votes), color: o.color });
+    a.top.push({ label: o.label, emoji: o.emoji, imageUrl: o.imageUrl, votes: Number(o.votes), color: o.color, pos: o.position });
     rankieAgg.set(o.rankieId, a);
   }
   for (const a of rankieAgg.values()) {
-    a.top.sort((x, y) => y.votes - x.votes);
-    a.top = a.top.slice(0, 4);
+    a.top.sort((x, y) => y.votes - x.votes || x.pos - y.pos);
+    a.top = a.top.slice(0, 4).sort((x, y) => x.pos - y.pos);
   }
 
   const endsBy = new Map(pathEnds.map((r) => [r.id, Number(r.c)]));
@@ -266,7 +268,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       pinned: !!(p as { pinned?: boolean }).pinned,
       hidden: !!(p as { hidden?: boolean }).hidden,
       authorRankUps: r.author ? rankBy.get(r.author.id) ?? 0 : 0,
-      options: p.type === 'rankie' ? agg?.top ?? [] : undefined,
+      options: p.type === 'rankie' ? (agg?.top ?? []).map(({ pos: _pos, ...o }) => o) : undefined,
       endings: p.type === 'path' ? endingsBy.get(p.id) ?? [] : undefined,
     };
   });
