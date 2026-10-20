@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { pool, db } from '../src/db';
-import { passwordResets, posts, rankieOptions, series, seriesPosts, users } from '../src/db/schema';
+import { deckOptions, deckQuestions, passwordResets, posts, rankieOptions, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
 import { ensureClassics, LEGACY_CLASSICS_SERIES, RETIRED_MATCHUPS } from '../src/modules/classics/classics';
 import { outbox } from '../src/lib/mailer';
@@ -30,9 +30,9 @@ describe('nội dung kinh điển của @rankev', () => {
     expect(retired.every((r) => r.deletedAt !== null)).toBe(true);
     const linked = await db.select().from(seriesPosts).where(inArray(seriesPosts.postId, duels.map((d) => d.id)));
     expect(linked.length).toBe(0);
-    expect(mine.filter((p) => p.type === 'path').length).toBe(1);
-    expect(mine.filter((p) => p.deckMode === 'exam').length).toBe(1);
-    expect(mine.filter((p) => p.deckMode === 'survey').length).toBe(1);
+    expect(mine.filter((p) => p.type === 'path').length).toBe(2);
+    expect(mine.filter((p) => p.deckMode === 'exam').length).toBe(2);
+    expect(mine.filter((p) => p.deckMode === 'survey').length).toBe(2);
 
     // người dùng thật bình chọn trận đầu tiên — không có phiếu giả từ trước
     const u = await registerUser(app);
@@ -114,5 +114,25 @@ describe('nội dung kinh điển của @rankev', () => {
     expect(specials.filter((x) => ['Bạn là món ăn Việt nào?', 'Giấc ngủ của bạn thế nào?', 'Bạn hiểu Việt Nam đến đâu?'].includes(x.title) && !x.deletedAt)).toHaveLength(0);
     // dọn: trả ảnh Phở về để lần chạy sau không lệch
     await db.update(rankieOptions).set({ imageUrl: null }).where(eq(rankieOptions.id, opts.find((o) => o.label === 'Phở')!.id));
+  });
+
+  it('nội dung mẫu: đề Toán 40 câu × 0,25 điểm (không bị làm tròn), truyện học đường 6 kết, WHO-5', async () => {
+    await ensureClassics();
+    const [official] = await db.select().from(users).where(eq(users.handle, 'rankev'));
+    const mine = await db.select({ id: posts.id, title: posts.title, passingScore: posts.passingScore }).from(posts).where(eq(posts.authorId, official.id));
+    const exam = mine.find((p) => p.title === 'Đề thi thử THPT môn Toán — 40 câu')!;
+    expect(exam).toBeTruthy();
+    const res = await app.inject({ method: 'GET', url: `/posts/${exam.id}` });
+    const body = res.json();
+    expect(body.questions).toHaveLength(40);
+    expect(body.questions.every((q: { points: number }) => q.points === 0.25)).toBe(true);
+    // API công khai giấu đáp án (chống gian lận) → kiểm tra trong DB: mỗi câu đúng 1 đáp án đúng
+    const qs = await db.select({ id: deckQuestions.id }).from(deckQuestions).where(eq(deckQuestions.postId, exam.id));
+    const rights = await db.select({ q: deckOptions.questionId }).from(deckOptions).where(and(inArray(deckOptions.questionId, qs.map((q) => q.id)), eq(deckOptions.correct, true)));
+    expect(rights).toHaveLength(40);
+    expect(new Set(rights.map((r) => r.q)).size).toBe(40);
+    expect(Number(exam.passingScore)).toBe(5);
+    expect(mine.some((p) => p.title === 'Ngày đầu ở trường Sakuragaoka 🌸')).toBe(true);
+    expect(mine.some((p) => p.title === 'Chỉ số hạnh phúc WHO-5: 2 tuần qua bạn thế nào?')).toBe(true);
   });
 });

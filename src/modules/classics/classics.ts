@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { posts, rankieOptions, series, users } from '../../db/schema';
+import { deckQuestions, posts, rankieOptions, series, users } from '../../db/schema';
 import { CLASSIC_IMAGES } from './classics-images';
+import { SHOWCASE_EXAM, SHOWCASE_PATH, SHOWCASE_SURVEY } from './showcase';
 import { createRankie } from '../posts/posts.service';
 import { createRankieSchema } from '../posts/posts.schemas';
 import { createPath } from '../paths/paths.service';
@@ -190,6 +191,15 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
     }));
     created++;
   }
+  // ===== Nội dung mẫu: truyện học đường nhiều nhánh · đề thi thử Toán 40 câu · khảo sát WHO-5 =====
+  if (!have.has(SHOWCASE_PATH.title)) { await createPath(authorId, createPathSchema.parse(SHOWCASE_PATH)); created++; }
+  if (!have.has(SHOWCASE_EXAM.title)) { await createDeck(authorId, createDeckSchema.parse(SHOWCASE_EXAM)); created++; }
+  else {
+    // đề tạo trước migration 0037 bị làm tròn 0,25 → 0,3: sửa lại cho đúng thang 10
+    const [ex] = await db.select({ id: posts.id }).from(posts).where(and(eq(posts.authorId, authorId), eq(posts.title, SHOWCASE_EXAM.title)));
+    if (ex) await db.update(deckQuestions).set({ points: '0.25' }).where(and(eq(deckQuestions.postId, ex.id), sql`${deckQuestions.points} <> 0.25`));
+  }
+  if (!have.has(SHOWCASE_SURVEY.title)) { await createDeck(authorId, createDeckSchema.parse(SHOWCASE_SURVEY)); created++; }
   if (created) log(`[classics] đã tạo ${created} bài kinh điển của @${OFFICIAL.handle}`);
   return created;
 }
