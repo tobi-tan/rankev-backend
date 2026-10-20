@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { posts, rankieOptions, series, users } from '../../db/schema';
 import { CLASSIC_IMAGES } from './classics-images';
@@ -23,6 +23,8 @@ const TW = (code: string) => `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.
 const OFFICIAL = { email: 'official@rankev.local', handle: 'rankev', name: 'Rankev', avatarUrl: 'https://rankev-web.vercel.app/icon-192.png' };
 // Tên series cũ (2026-10-14) — đã bỏ, dọn đi khi khởi động (bài/phiếu/bình luận giữ nguyên).
 export const LEGACY_CLASSICS_SERIES = 'Đối đầu kinh điển ⚔️';
+// Trận đã BỎ (user 2026-10-21: "không có gì là kinh điển") → gỡ (xoá mềm) bài cũ của @rankev khi khởi động.
+export const RETIRED_MATCHUPS = ['Biển hay Núi?', 'Dậy sớm hay Thức khuya?', 'Mì tôm trứng hay Mì tôm xúc xích?', 'Chơi game hay Xem phim?'];
 
 type Side = [label: string, twemoji: string];
 const MATCHUPS: { title: string; caption: string; tags: string[]; a: Side; b: Side }[] = [
@@ -32,16 +34,12 @@ const MATCHUPS: { title: string; caption: string; tags: string[]; a: Side; b: Si
   { title: 'Cà phê sữa đá hay Trà sữa?', caption: 'Đồ uống quốc dân của bạn là gì?', tags: ['kinhdien', 'douong'], a: ['Cà phê sữa đá', '2615'], b: ['Trà sữa', '1f9cb'] },
   { title: 'iPhone hay Android?', caption: 'Phe táo khuyết hay phe robot xanh?', tags: ['kinhdien', 'congnghe'], a: ['iPhone', '1f34e'], b: ['Android', '1f916'] },
   { title: 'Hà Nội hay Sài Gòn?', caption: 'Nếu chỉ được sống ở một nơi, bạn chọn đâu?', tags: ['kinhdien', 'dulich'], a: ['Hà Nội', '1f3ef'], b: ['Sài Gòn', '1f306'] },
-  { title: 'Biển hay Núi?', caption: 'Kỳ nghỉ hoàn hảo của bạn có sóng hay có mây?', tags: ['kinhdien', 'dulich'], a: ['Biển', '1f3d6'], b: ['Núi', '1f3d4'] },
-  { title: 'Dậy sớm hay Thức khuya?', caption: 'Chim sớm hay cú đêm — bạn làm việc hiệu quả nhất lúc nào?', tags: ['kinhdien', 'loisong'], a: ['Dậy sớm', '1f305'], b: ['Thức khuya', '1f319'] },
   { title: 'Bánh mì hay Xôi?', caption: 'Bữa sáng vội vàng trên đường đi làm: chọn món nào?', tags: ['kinhdien', 'amthuc'], a: ['Bánh mì', '1f956'], b: ['Xôi', '1f359'] },
   { title: 'Tom hay Jerry?', caption: 'Tuổi thơ của cả thế hệ — bạn luôn đứng về phe ai?', tags: ['kinhdien', 'hoathinh'], a: ['Tom', '1f63c'], b: ['Jerry', '1f42d'] },
   { title: 'Doraemon hay Conan?', caption: 'Bộ truyện tranh gắn liền với tuổi thơ bạn là…', tags: ['kinhdien', 'truyentranh'], a: ['Doraemon', '1f514'], b: ['Conan', '1f575'] },
   { title: 'Nhắn tin hay Gọi điện?', caption: 'Có chuyện cần nói, bạn sẽ…', tags: ['kinhdien', 'loisong'], a: ['Nhắn tin', '1f4ac'], b: ['Gọi điện', '1f4de'] },
   { title: 'Lên văn phòng hay Làm từ xa?', caption: 'Đi làm kiểu nào hiệu quả hơn?', tags: ['kinhdien', 'congviec'], a: ['Lên văn phòng', '1f3e2'], b: ['Làm từ xa', '1f3e0'] },
   { title: 'Tết về quê hay Tết đi du lịch?', caption: 'Kỳ nghỉ dài nhất năm, bạn dành cho đâu?', tags: ['kinhdien', 'tet'], a: ['Về quê', '1f9e7'], b: ['Đi du lịch', '2708'] },
-  { title: 'Mì tôm trứng hay Mì tôm xúc xích?', caption: 'Câu hỏi quan trọng nhất của mọi buổi tối chạy deadline.', tags: ['kinhdien', 'amthuc'], a: ['Thêm trứng', '1f95a'], b: ['Thêm xúc xích', '1f32d'] },
-  { title: 'Chơi game hay Xem phim?', caption: 'Tối rảnh rỗi, bạn mở gì đầu tiên?', tags: ['kinhdien', 'giaitri'], a: ['Chơi game', '1f3ae'], b: ['Xem phim', '1f3ac'] },
 ];
 
 // Email đăng nhập của @rankev = env OFFICIAL_EMAIL (Gmail thương hiệu do chủ app giữ). Đặt env rồi
@@ -100,6 +98,8 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
 
   // Bỏ series cũ: mỗi trận đứng riêng (xoá series → chỉ gỡ liên kết chapter, bài giữ nguyên)
   await db.delete(series).where(and(eq(series.authorId, authorId), eq(series.name, LEGACY_CLASSICS_SERIES)));
+  await db.update(posts).set({ deletedAt: new Date() })
+    .where(and(eq(posts.authorId, authorId), eq(posts.chartType, 'head_to_head'), inArray(posts.title, RETIRED_MATCHUPS), isNull(posts.deletedAt)));
   for (const m of MATCHUPS) {
     const img = CLASSIC_IMAGES[m.title];
     if (have.has(m.title)) { await syncImages(authorId, m.title, m.caption, m.a[0], m.b[0]); continue; }

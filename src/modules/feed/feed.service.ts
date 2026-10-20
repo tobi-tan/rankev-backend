@@ -24,6 +24,8 @@ import { countShares } from '../messaging/shares';
 import { toPublicUser, type PublicUser } from '../users/users.serializer';
 
 export interface FeedOption {
+  /** id thật của lựa chọn → thẻ feed vote NGAY (không phải nạp cả bài để tìm id) */
+  id: string;
   label: string | null;
   emoji: string | null;
   /** ảnh của lựa chọn (ưu tiên hơn emoji khi hiển thị) */
@@ -136,6 +138,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
       ? db
           .select({
             rankieId: rankieOptions.rankieId,
+            id: rankieOptions.id,
             label: rankieOptions.label,
             emoji: rankieOptions.emoji,
             imageUrl: rankieOptions.imageUrl,
@@ -145,7 +148,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
           })
           .from(rankieOptions)
           .where(inArray(rankieOptions.rankieId, rankieIds))
-      : Promise.resolve([] as { rankieId: string; label: string | null; emoji: string | null; imageUrl: string | null; votes: number; color: string | null; position: number }[]),
+      : Promise.resolve([] as { rankieId: string; id: string; label: string | null; emoji: string | null; imageUrl: string | null; votes: number; color: string | null; position: number }[]),
     pathIds.length
       ? db
           .select({ id: pathEndings.postId, c: count() })
@@ -195,7 +198,7 @@ async function buildSummaries(rows: { post: Post; author: User | null }[]): Prom
     const a = rankieAgg.get(o.rankieId) ?? { total: 0, size: 0, top: [] };
     a.total += Number(o.votes);
     a.size += 1;
-    a.top.push({ label: o.label, emoji: o.emoji, imageUrl: o.imageUrl, votes: Number(o.votes), color: o.color, pos: o.position });
+    a.top.push({ id: o.id, label: o.label, emoji: o.emoji, imageUrl: o.imageUrl, votes: Number(o.votes), color: o.color, pos: o.position });
     rankieAgg.set(o.rankieId, a);
   }
   for (const a of rankieAgg.values()) {

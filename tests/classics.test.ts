@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { pool, db } from '../src/db';
 import { passwordResets, posts, rankieOptions, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
-import { ensureClassics, LEGACY_CLASSICS_SERIES } from '../src/modules/classics/classics';
+import { ensureClassics, LEGACY_CLASSICS_SERIES, RETIRED_MATCHUPS } from '../src/modules/classics/classics';
 import { outbox } from '../src/lib/mailer';
 
 let app: FastifyInstance;
@@ -24,7 +24,10 @@ describe('nội dung kinh điển của @rankev', () => {
     expect((await db.select().from(series).where(eq(series.name, LEGACY_CLASSICS_SERIES))).length).toBe(0);
     const mine = await db.select({ type: posts.type, deckMode: posts.deckMode, chartType: posts.chartType, tags: posts.tags, id: posts.id }).from(posts).where(eq(posts.authorId, official.id));
     const duels = mine.filter((p) => p.chartType === 'head_to_head' && Array.isArray(p.tags) && (p.tags as string[]).includes('kinhdien'));
-    expect(duels.length).toBeGreaterThanOrEqual(16);
+    expect(duels.length).toBeGreaterThanOrEqual(12);
+    // 4 trận đã bỏ không còn hiển thị (xoá mềm)
+    const retired = await db.select({ deletedAt: posts.deletedAt }).from(posts).where(and(eq(posts.authorId, official.id), inArray(posts.title, RETIRED_MATCHUPS)));
+    expect(retired.every((r) => r.deletedAt !== null)).toBe(true);
     const linked = await db.select().from(seriesPosts).where(inArray(seriesPosts.postId, duels.map((d) => d.id)));
     expect(linked.length).toBe(0);
     expect(mine.filter((p) => p.type === 'path').length).toBe(1);
@@ -69,7 +72,7 @@ describe('nội dung kinh điển của @rankev', () => {
     const u = await registerUser(app);
     const get = async () => (await app.inject({ method: 'GET', url: '/feed/classics?limit=30', headers: bearer(u.accessToken) })).json().items as { id: string; title: string; tags: string[]; author: { handle: string } }[];
     const before = await get();
-    expect(before.length).toBeGreaterThanOrEqual(16);
+    expect(before.length).toBeGreaterThanOrEqual(12);
     expect(before.every((x) => x.author.handle === 'rankev' && x.tags.includes('kinhdien'))).toBe(true);
     // người thường gắn #kinhdien không lọt vào gợi ý
     const fake = await app.inject({ method: 'POST', url: '/posts', headers: bearer(u.accessToken), payload: { type: 'rankie', title: 'Giả kinh điển', votingType: 'single', chartType: 'head_to_head', tags: ['kinhdien'], options: [{ label: 'A' }, { label: 'B' }] } });

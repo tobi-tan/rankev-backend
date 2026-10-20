@@ -24,14 +24,8 @@ export const CLASSIC_IMAGES: Record<string, { a: ClassicImage; b: ClassicImage }
     a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Hanoi_-_Turtle_Tower_%28Th%C3%A1p_R%C3%B9a%29%2C_Ho%C3%A0n_Ki%E1%BA%BFm_Lake.jpg/960px-Hanoi_-_Turtle_Tower_%28Th%C3%A1p_R%C3%B9a%29%2C_Ho%C3%A0n_Ki%E1%BA%BFm_Lake.jpg", artist: "P. Hughes", license: "CC BY 4.0" },
     b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/08/Ho_Chi_Minh_City_Skyline_at_Night.jpg/960px-Ho_Chi_Minh_City_Skyline_at_Night.jpg", artist: "Tran Van Ngoc", license: "CC0" },
   },
-  "Biển hay Núi?": {
-    a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/df/Bai_Chay_beach%2C_Ha_Long%2C_Vietnam%2C_20240129_0915_3958.jpg/960px-Bai_Chay_beach%2C_Ha_Long%2C_Vietnam%2C_20240129_0915_3958.jpg", artist: "Jakub Hałun", license: "CC BY 4.0" },
-    b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/47/Fansipan-vietnam.jpg/960px-Fansipan-vietnam.jpg", artist: "Hadzunghiep", license: "CC BY-SA 3.0" },
-  },
-  "Dậy sớm hay Thức khuya?": {
-    a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Colorful_clouds_and_blue_sky_with_water_reflection_of_an_island_hosting_trees_at_sunrise_in_Si_Phan_Don%2C_Laos.jpg/960px-Colorful_clouds_and_blue_sky_with_water_reflection_of_an_island_hosting_trees_at_sunrise_in_Si_Phan_Don%2C_Laos.jpg", artist: "Basile Morin", license: "CC BY-SA 4.0" },
-    b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8b/Price_Building_illuminated_at_night_in_Quebec_City.jpg/960px-Price_Building_illuminated_at_night_in_Quebec_City.jpg", artist: "Wilfredor", license: "CC0" },
-  },
+
+
   "Bánh mì hay Xôi?": {
     a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/82/B%C3%A1nh_mi_Sandwich%28Takadanobaba%29IMG_20220215_104413_03.jpg/960px-B%C3%A1nh_mi_Sandwich%28Takadanobaba%29IMG_20220215_104413_03.jpg", artist: "経済特区", license: "CC BY-SA 4.0" },
     b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/X%C3%B4i_n%E1%BA%BFp_c%E1%BA%A9m%EF%BC%88Quay_phim_t%E1%BA%A1i_Khe_R%E1%BA%A1n%2CCon_Cu%C3%B4ng%2CNgh%E1%BB%87_An%EF%BC%89.jpg/960px-X%C3%B4i_n%E1%BA%BFp_c%E1%BA%A9m%EF%BC%88Quay_phim_t%E1%BA%A1i_Khe_R%E1%BA%A1n%2CCon_Cu%C3%B4ng%2CNgh%E1%BB%87_An%EF%BC%89.jpg", artist: "KoheiU", license: "CC0" },
@@ -48,12 +42,6 @@ export const CLASSIC_IMAGES: Record<string, { a: ClassicImage; b: ClassicImage }
     a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ad/Banh_chung_vuong_2.JPG/960px-Banh_chung_vuong_2.JPG", artist: "Viethavvh at vi.wikipedia", license: "Public domain" },
     b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9f/Sunset_view_from_an_airplane_window_above_the_clouds.jpg/960px-Sunset_view_from_an_airplane_window_above_the_clouds.jpg", artist: "Salwa Farwaneh Dameh", license: "CC0" },
   },
-  "Mì tôm trứng hay Mì tôm xúc xích?": {
-    a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Instant_fried_noodles_with_a_fried_egg.jpg/960px-Instant_fried_noodles_with_a_fried_egg.jpg", artist: "Fitrah 9131", license: "CC0" },
-    b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/Instant_noodles_with_soy_egg_and_ham_sausage.jpg/960px-Instant_noodles_with_soy_egg_and_ham_sausage.jpg", artist: "Fumikas Sagisavas", license: "CC0" },
-  },
-  "Chơi game hay Xem phim?": {
-    a: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Nintendo-Switch-Pro-Controller-FL.jpg/960px-Nintendo-Switch-Pro-Controller-FL.jpg", artist: "Evan-Amos", license: "Public domain" },
-    b: { url: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0c/RZ_Metro_Movie_Theater_interior_2023-03_%282%29.jpg/960px-RZ_Metro_Movie_Theater_interior_2023-03_%282%29.jpg", artist: "Razgrad", license: "CC BY-SA 4.0" },
-  },
+
+
 };
