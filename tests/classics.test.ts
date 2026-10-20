@@ -22,7 +22,7 @@ describe('nội dung kinh điển của @rankev', () => {
     expect(official.passwordHash).toBeNull(); // không ai đăng nhập được
     // không gom series: mỗi trận là một bài riêng, gắn #kinhdien
     expect((await db.select().from(series).where(eq(series.name, LEGACY_CLASSICS_SERIES))).length).toBe(0);
-    const mine = await db.select({ type: posts.type, deckMode: posts.deckMode, chartType: posts.chartType, tags: posts.tags, id: posts.id }).from(posts).where(eq(posts.authorId, official.id));
+    const mine = (await db.select({ type: posts.type, deckMode: posts.deckMode, chartType: posts.chartType, tags: posts.tags, id: posts.id, deletedAt: posts.deletedAt }).from(posts).where(eq(posts.authorId, official.id))).filter((p) => !p.deletedAt);
     const duels = mine.filter((p) => p.chartType === 'head_to_head' && Array.isArray(p.tags) && (p.tags as string[]).includes('kinhdien'));
     expect(duels.length).toBeGreaterThanOrEqual(12);
     // 4 trận đã bỏ không còn hiển thị (xoá mềm)
@@ -85,13 +85,14 @@ describe('nội dung kinh điển của @rankev', () => {
     expect((await get()).some((x) => x.id === target.id)).toBe(false);
   });
 
-  it('ảnh thật Wikimedia + dòng ghi nguồn; ảnh chủ app tự đổi thì không bị ghi đè', async () => {
+  it('ảnh thật (Unsplash không ghi nguồn, Wikimedia có ghi nguồn); ảnh chủ app tự đổi thì không bị ghi đè', async () => {
     await ensureClassics();
     const [pho] = await db.select().from(posts).where(eq(posts.title, 'Phở hay Bún chả?'));
     const opts = await db.select().from(rankieOptions).where(eq(rankieOptions.rankieId, pho.id));
-    expect(opts.every((o) => (o.imageUrl || '').includes('wikimedia.org'))).toBe(true);
-    expect(pho.caption).toContain('📷 Ảnh:');
-    expect(pho.caption).toContain('Wikimedia Commons');
+    expect(opts.every((o) => (o.imageUrl || '').includes('images.unsplash.com'))).toBe(true);
+    expect(pho.caption).not.toContain('📷 Ảnh:'); // Unsplash: không cần dòng ghi nguồn
+    const [messi] = await db.select().from(posts).where(eq(posts.title, 'Messi hay Ronaldo?'));
+    expect(messi.caption).toContain('Wikimedia Commons'); // ảnh CC vẫn ghi nguồn
     // chủ app tự đổi ảnh Phở → khởi động lại không ghi đè
     const mine = 'https://example.com/pho-cua-toi.jpg';
     await db.update(rankieOptions).set({ imageUrl: mine }).where(eq(rankieOptions.id, opts.find((o) => o.label === 'Phở')!.id));
@@ -102,6 +103,15 @@ describe('nội dung kinh điển của @rankev', () => {
     const [tom] = await db.select().from(posts).where(eq(posts.title, 'Tom hay Jerry?'));
     const tomOpts = await db.select().from(rankieOptions).where(eq(rankieOptions.rankieId, tom.id));
     expect(tomOpts.every((o) => (o.imageUrl || '').includes('twemoji'))).toBe(true);
+    // Path / Survey / Exam bản mới có ảnh; bản cũ chỉ có chữ đã gỡ
+    const [official] = await db.select().from(users).where(eq(users.handle, 'rankev'));
+    const specials = await db.select({ title: posts.title, media: posts.media, deletedAt: posts.deletedAt }).from(posts).where(and(eq(posts.authorId, official.id), inArray(posts.type, ['path', 'deck'])));
+    for (const t of ['Nếu là một món ăn Việt, bạn sẽ là món gì?', 'Bạn có đang ngủ đủ giấc?', 'Nhìn ảnh, đoán địa danh Việt Nam']) {
+      const p = specials.find((x) => x.title === t && !x.deletedAt);
+      expect(p, t).toBeTruthy();
+      expect(JSON.stringify(p!.media)).toContain('images.unsplash.com');
+    }
+    expect(specials.filter((x) => ['Bạn là món ăn Việt nào?', 'Giấc ngủ của bạn thế nào?', 'Bạn hiểu Việt Nam đến đâu?'].includes(x.title) && !x.deletedAt)).toHaveLength(0);
     // dọn: trả ảnh Phở về để lần chạy sau không lệch
     await db.update(rankieOptions).set({ imageUrl: null }).where(eq(rankieOptions.id, opts.find((o) => o.label === 'Phở')!.id));
   });

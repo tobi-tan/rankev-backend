@@ -24,6 +24,8 @@ const OFFICIAL = { email: 'official@rankev.local', handle: 'rankev', name: 'Rank
 // Tên series cũ (2026-10-14) — đã bỏ, dọn đi khi khởi động (bài/phiếu/bình luận giữ nguyên).
 export const LEGACY_CLASSICS_SERIES = 'Đối đầu kinh điển ⚔️';
 // Trận đã BỎ (user 2026-10-21: "không có gì là kinh điển") → gỡ (xoá mềm) bài cũ của @rankev khi khởi động.
+// Path/Survey/Exam bản đầu (chỉ có chữ, user chê "không có gì thu hút") → gỡ, thay bản có ảnh.
+export const RETIRED_SPECIALS = ['Bạn là món ăn Việt nào?', 'Giấc ngủ của bạn thế nào?', 'Bạn hiểu Việt Nam đến đâu?'];
 export const RETIRED_MATCHUPS = ['Biển hay Núi?', 'Dậy sớm hay Thức khuya?', 'Mì tôm trứng hay Mì tôm xúc xích?', 'Chơi game hay Xem phim?'];
 
 type Side = [label: string, twemoji: string];
@@ -68,8 +70,10 @@ async function ensureOfficial(): Promise<string> {
 const CREDIT_MARK = '📷 Ảnh:';
 function withCredit(caption: string, la: string, lb: string, img?: (typeof CLASSIC_IMAGES)[string]): string {
   if (!img) return caption;
-  const c = (label: string, i: { artist: string; license: string }) => `${label} — ${i.artist || 'không rõ tác giả'} (${i.license})`;
-  return `${caption}\n\n${CREDIT_MARK} ${c(la, img.a)}; ${c(lb, img.b)} · Wikimedia Commons`;
+  // Chỉ ảnh Wikimedia (CC) mới cần ghi nguồn; Unsplash thì không.
+  const parts = ([[la, img.a], [lb, img.b]] as const).filter(([, i]) => i.license !== 'Unsplash')
+    .map(([label, i]) => `${label} — ${i.artist || 'không rõ tác giả'} (${i.license})`);
+  return parts.length ? `${caption}\n\n${CREDIT_MARK} ${parts.join('; ')} · Wikimedia Commons` : caption;
 }
 
 /** Trận đã có (bản thật): thay ảnh emoji bằng ảnh thật + thêm dòng ghi nguồn — phiếu/bình luận giữ nguyên. */
@@ -79,11 +83,14 @@ async function syncImages(authorId: string, title: string, caption: string, la: 
   const [p] = await db.select({ id: posts.id, caption: posts.caption }).from(posts).where(and(eq(posts.authorId, authorId), eq(posts.title, title)));
   if (!p) return;
   for (const [label, url] of [[la, img.a.url], [lb, img.b.url]] as const) {
-    await db.update(rankieOptions).set({ imageUrl: url }).where(and(eq(rankieOptions.rankieId, p.id), eq(rankieOptions.label, label), sql`(${rankieOptions.imageUrl} IS NULL OR ${rankieOptions.imageUrl} LIKE '%twemoji%')`)); // chỉ thay ảnh emoji cũ — ảnh chủ app tự đổi thì giữ
+    // chỉ thay ảnh DO HỆ THỐNG đặt (emoji / Wikimedia / Unsplash cũ) — ảnh chủ app tự tải lên thì giữ
+    await db.update(rankieOptions).set({ imageUrl: url }).where(and(eq(rankieOptions.rankieId, p.id), eq(rankieOptions.label, label),
+      sql`(${rankieOptions.imageUrl} IS NULL OR ${rankieOptions.imageUrl} LIKE '%twemoji%' OR ${rankieOptions.imageUrl} LIKE '%wikimedia.org%' OR ${rankieOptions.imageUrl} LIKE '%images.unsplash.com%')`,
+      sql`${rankieOptions.imageUrl} IS DISTINCT FROM ${url}`));
   }
-  if (!(p.caption || '').includes(CREDIT_MARK)) {
-    await db.update(posts).set({ caption: withCredit(p.caption || caption, la, lb, img) }).where(eq(posts.id, p.id));
-  }
+  const base = (p.caption || caption).split(`\n\n${CREDIT_MARK}`)[0];
+  const next = withCredit(base, la, lb, img);
+  if (next !== p.caption) await db.update(posts).set({ caption: next }).where(eq(posts.id, p.id));
 }
 
 async function existingTitles(authorId: string): Promise<Set<string>> {
@@ -100,6 +107,8 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
   await db.delete(series).where(and(eq(series.authorId, authorId), eq(series.name, LEGACY_CLASSICS_SERIES)));
   await db.update(posts).set({ deletedAt: new Date() })
     .where(and(eq(posts.authorId, authorId), eq(posts.chartType, 'head_to_head'), inArray(posts.title, RETIRED_MATCHUPS), isNull(posts.deletedAt)));
+  await db.update(posts).set({ deletedAt: new Date() })
+    .where(and(eq(posts.authorId, authorId), inArray(posts.type, ['path', 'deck']), inArray(posts.title, RETIRED_SPECIALS), isNull(posts.deletedAt)));
   for (const m of MATCHUPS) {
     const img = CLASSIC_IMAGES[m.title];
     if (have.has(m.title)) { await syncImages(authorId, m.title, m.caption, m.a[0], m.b[0]); continue; }
@@ -111,63 +120,72 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
     created++;
   }
 
-  const PATH_TITLE = 'Bạn là món ăn Việt nào?';
+  // ===== PATH kiểu "light novel": mỗi cảnh 1 ảnh, chạm ẢNH để chọn đường đi tiếp =====
+  const PATH_TITLE = 'Nếu là một món ăn Việt, bạn sẽ là món gì?';
   if (!have.has(PATH_TITLE)) {
     await createPath(authorId, createPathSchema.parse({
-      type: 'path', title: PATH_TITLE, caption: '3 câu hỏi nhỏ để biết bạn là món gì trong mâm cơm Việt 🍲', tags: ['kinhdien', 'amthuc'],
+      type: 'path', title: PATH_TITLE,
+      caption: '3 cảnh trong một ngày cuối tuần. Ở mỗi cảnh, chạm vào bức ảnh bạn thấy giống mình nhất — cuối hành trình sẽ biết bạn là món nào trong mâm cơm Việt 🍜',
+      tags: ['kinhdien', 'amthuc'], media: { url: "https://images.unsplash.com/photo-1641440615059-42c8ed3af8c8?w=1080&q=80&auto=format&fit=crop", type: 'image' },
       revealMode: 'names', hideEndingCount: false, allowGuestPresent: true,
       questions: [
-        { key: 'q1', isEntry: true, text: 'Sáng thứ Bảy, bạn thường…', answers: [
-          { label: 'Ngủ nướng tới trưa', targetType: 'question', targetKey: 'q2' },
-          { label: 'Dậy sớm đi chợ, nấu nướng', targetType: 'question', targetKey: 'q3' },
-          { label: 'Lên đồ đi cà phê với bạn', targetType: 'question', targetKey: 'q2' },
+        { key: 'q1', isEntry: true, text: 'Sáng thứ Bảy, Hà Nội vừa thức giấc. Bạn sẽ…', sceneImageUrl: "https://images.unsplash.com/photo-1679562078540-09ae866ef4bf?w=1080&q=80&auto=format&fit=crop", answers: [
+          { label: 'Ngủ nướng tới trưa', imageUrl: "https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?w=1080&q=80&auto=format&fit=crop", targetType: 'question', targetKey: 'q2' },
+          { label: 'Ra chợ sớm, tự nấu một bữa', imageUrl: "https://images.unsplash.com/photo-1558722141-dc9be8718862?w=1080&q=80&auto=format&fit=crop", targetType: 'question', targetKey: 'q3' },
+          { label: 'Hẹn bạn đi cà phê phin', imageUrl: "https://images.unsplash.com/photo-1607469256300-96fa04e6e08b?w=1080&q=80&auto=format&fit=crop", targetType: 'question', targetKey: 'q2' },
         ] },
-        { key: 'q2', text: 'Bạn bè hay nhờ bạn việc gì nhất?', answers: [
-          { label: 'Chọn quán ăn ngon', targetType: 'ending', targetKey: 'Bún chả' },
-          { label: 'Lên kế hoạch cho cả nhóm', targetType: 'ending', targetKey: 'Bánh mì' },
-          { label: 'Ngồi nghe tâm sự', targetType: 'ending', targetKey: 'Phở' },
+        { key: 'q2', text: 'Tối đó cả nhóm bạn tụ tập. Bạn là người…', sceneImageUrl: "https://images.unsplash.com/photo-1581954548122-4dff8989c0f7?w=1080&q=80&auto=format&fit=crop", answers: [
+          { label: 'Chọn quán ngon nhất phố', imageUrl: "https://images.unsplash.com/photo-1743485754079-d7fde0e9283f?w=1080&q=80&auto=format&fit=crop", targetType: 'ending', targetKey: 'Bún chả' },
+          { label: 'Lên kế hoạch cho cả nhóm', imageUrl: "https://images.unsplash.com/photo-1578894381163-e72c17f2d45f?w=1080&q=80&auto=format&fit=crop", targetType: 'ending', targetKey: 'Bánh mì' },
+          { label: 'Ngồi nghe mọi người tâm sự', imageUrl: "https://images.unsplash.com/photo-1760623681430-9224e69d9683?w=1080&q=80&auto=format&fit=crop", targetType: 'ending', targetKey: 'Phở' },
         ] },
-        { key: 'q3', text: 'Đồ đạc trong phòng bạn…', answers: [
-          { label: 'Gọn gàng, mọi thứ có chỗ của nó', targetType: 'ending', targetKey: 'Gỏi cuốn' },
-          { label: 'Hơi bừa nhưng ấm cúng', targetType: 'ending', targetKey: 'Cơm tấm' },
-          { label: 'Đầy đồ sưu tầm, kỷ niệm', targetType: 'ending', targetKey: 'Phở' },
+        { key: 'q3', text: 'Nấu xong, bạn dọn về phòng. Căn phòng của bạn trông thế nào?', sceneImageUrl: "https://images.unsplash.com/photo-1660322098031-4824cddb8631?w=1080&q=80&auto=format&fit=crop", answers: [
+          { label: 'Gọn gàng, mọi thứ có chỗ của nó', imageUrl: "https://images.unsplash.com/photo-1617325247661-675ab4b64ae2?w=1080&q=80&auto=format&fit=crop", targetType: 'ending', targetKey: 'Gỏi cuốn' },
+          { label: 'Hơi bừa nhưng ấm cúng', imageUrl: "https://images.unsplash.com/photo-1611234688667-76b6d8fadd75?w=1080&q=80&auto=format&fit=crop", targetType: 'ending', targetKey: 'Cơm tấm' },
+          { label: 'Đầy đồ sưu tầm, kỷ niệm', imageUrl: "https://images.unsplash.com/photo-1790270692089-61be23bab82e?w=1080&q=80&auto=format&fit=crop", targetType: 'ending', targetKey: 'Phở' },
         ] },
       ],
       endings: [
-        { name: 'Phở', emoji: '🍜', comment: 'Ấm áp, chân thành — ai ở cạnh bạn cũng thấy dễ chịu.' },
-        { name: 'Bánh mì', emoji: '🥖', comment: 'Năng động, nhanh nhẹn, đi đâu cũng hợp.' },
-        { name: 'Bún chả', emoji: '🥢', comment: 'Hào sảng, thích tụ tập, có bạn là có vui.' },
-        { name: 'Gỏi cuốn', emoji: '🥬', comment: 'Thanh lịch, chỉn chu, sống lành mạnh.' },
-        { name: 'Cơm tấm', emoji: '🍚', comment: 'Bình dị mà cuốn hút, càng biết lâu càng quý.' },
+        { name: 'Phở', imageUrl: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=1080&q=80&auto=format&fit=crop", comment: 'Ấm áp, chân thành — ai ở cạnh bạn cũng thấy dễ chịu.' },
+        { name: 'Bánh mì', imageUrl: "https://images.unsplash.com/photo-1600454309261-3dc9b7597637?w=1080&q=80&auto=format&fit=crop", comment: 'Năng động, nhanh nhẹn, đi đâu cũng hợp.' },
+        { name: 'Bún chả', imageUrl: "https://images.unsplash.com/photo-1742893368398-128bded9c656?w=1080&q=80&auto=format&fit=crop", comment: 'Hào sảng, thích tụ tập, có bạn là có vui.' },
+        { name: 'Gỏi cuốn', imageUrl: "https://images.unsplash.com/photo-1594020293008-5f99f60bd4d7?w=1080&q=80&auto=format&fit=crop", comment: 'Thanh lịch, chỉn chu, sống lành mạnh.' },
+        { name: 'Cơm tấm', imageUrl: "https://images.unsplash.com/photo-1597311280719-b6bb2ca37f62?w=1080&q=80&auto=format&fit=crop", comment: 'Bình dị mà cuốn hút, càng biết lâu càng quý.' },
       ],
     }));
     created++;
   }
 
-  const SURVEY_TITLE = 'Giấc ngủ của bạn thế nào?';
+  // ===== SURVEY: ảnh bìa + ảnh từng câu =====
+  const SURVEY_TITLE = 'Bạn có đang ngủ đủ giấc?';
   if (!have.has(SURVEY_TITLE)) {
     await createDeck(authorId, createDeckSchema.parse({
-      type: 'deck', deckMode: 'survey', title: SURVEY_TITLE, caption: 'Khảo sát ẩn danh 3 câu — xem cả cộng đồng ngủ ra sao 😴', tags: ['kinhdien', 'suckhoe'], allowGuestPresent: true,
+      type: 'deck', deckMode: 'survey', title: SURVEY_TITLE,
+      caption: 'Khảo sát ẩn danh, 3 câu, chưa tới 30 giây. Trả lời xong bạn sẽ thấy cả cộng đồng Rankev đang ngủ thế nào 😴',
+      tags: ['kinhdien', 'suckhoe'], allowGuestPresent: true, media: { url: "https://images.unsplash.com/photo-1675510183225-76c920848c29?w=1080&q=80&auto=format&fit=crop", type: 'image' },
       questions: [
-        { text: 'Bạn thường đi ngủ lúc mấy giờ?', votingType: 'single', options: [{ label: 'Trước 22h' }, { label: '22h – 0h' }, { label: '0h – 2h' }, { label: 'Sau 2h' }] },
-        { text: 'Mỗi đêm bạn ngủ khoảng bao lâu?', votingType: 'single', options: [{ label: 'Dưới 5 tiếng' }, { label: '5 – 7 tiếng' }, { label: '7 – 9 tiếng' }, { label: 'Hơn 9 tiếng' }] },
-        { text: 'Điều gì hay làm bạn thức khuya? (chọn nhiều)', votingType: 'multiple', options: [{ label: 'Lướt mạng xã hội' }, { label: 'Công việc / học' }, { label: 'Xem phim, chơi game' }, { label: 'Suy nghĩ linh tinh' }] },
+        { text: 'Bạn thường đi ngủ lúc mấy giờ?', imageUrl: "https://images.unsplash.com/photo-1549675584-c22bde15df72?w=1080&q=80&auto=format&fit=crop", votingType: 'single', options: [{ label: 'Trước 22h' }, { label: '22h – 0h' }, { label: '0h – 2h' }, { label: 'Sau 2h' }] },
+        { text: 'Mỗi đêm bạn ngủ khoảng bao lâu?', imageUrl: "https://images.unsplash.com/photo-1688382575775-9aaa5025524e?w=1080&q=80&auto=format&fit=crop", votingType: 'single', options: [{ label: 'Dưới 5 tiếng' }, { label: '5 – 7 tiếng' }, { label: '7 – 9 tiếng' }, { label: 'Hơn 9 tiếng' }] },
+        { text: 'Điều gì hay làm bạn thức khuya? (chọn nhiều)', imageUrl: "https://images.unsplash.com/photo-1585577517704-f3d6f8023665?w=1080&q=80&auto=format&fit=crop", votingType: 'multiple', options: [{ label: 'Lướt mạng xã hội' }, { label: 'Công việc / học' }, { label: 'Xem phim, chơi game' }, { label: 'Suy nghĩ linh tinh' }] },
       ],
     }));
     created++;
   }
 
-  const EXAM_TITLE = 'Bạn hiểu Việt Nam đến đâu?';
+  // ===== EXAM: nhìn ẢNH đoán địa danh =====
+  const EXAM_TITLE = 'Nhìn ảnh, đoán địa danh Việt Nam';
   if (!have.has(EXAM_TITLE)) {
     await createDeck(authorId, createDeckSchema.parse({
-      type: 'deck', deckMode: 'exam', title: EXAM_TITLE, caption: '5 câu về đất nước hình chữ S — đạt từ 6/10 điểm 🇻🇳', tags: ['kinhdien', 'dovui'],
-      passingScore: 6, examDurationMinutes: 5, allowGuestPresent: true,
+      type: 'deck', deckMode: 'exam', title: EXAM_TITLE,
+      caption: '5 bức ảnh, 5 địa danh nổi tiếng. Mỗi câu đúng được 2 điểm — đạt 6/10 điểm trở lên là bạn "sành" Việt Nam 🇻🇳',
+      tags: ['kinhdien', 'dovui', 'dulich'], media: { url: "https://images.unsplash.com/photo-1675111066042-9baa4c343157?w=1080&q=80&auto=format&fit=crop", type: 'image' },
+      passingScore: 6, examDurationMinutes: 3, allowGuestPresent: true,
       questions: [
-        { text: 'Đỉnh núi cao nhất Việt Nam là?', votingType: 'single', points: 2, options: [{ label: 'Fansipan', correct: true }, { label: 'Pu Si Lung' }, { label: 'Bạch Mã' }] },
-        { text: 'Vịnh Hạ Long lần đầu được UNESCO công nhận Di sản thiên nhiên thế giới năm nào?', votingType: 'single', points: 2, options: [{ label: '1994', correct: true }, { label: '2000' }, { label: '2010' }] },
-        { text: 'Hang Sơn Đoòng nằm trong vườn quốc gia nào?', votingType: 'single', points: 2, options: [{ label: 'Phong Nha – Kẻ Bàng', correct: true }, { label: 'Cúc Phương' }, { label: 'Cát Tiên' }] },
-        { text: 'Con sông nào đổ ra biển qua đồng bằng sông Cửu Long?', votingType: 'single', points: 2, options: [{ label: 'Sông Mê Kông', correct: true }, { label: 'Sông Hồng' }, { label: 'Sông Đà' }] },
-        { text: 'Bờ biển Việt Nam dài khoảng bao nhiêu km?', votingType: 'single', points: 2, options: [{ label: 'Khoảng 1.200 km' }, { label: 'Khoảng 3.260 km', correct: true }, { label: 'Khoảng 5.500 km' }] },
+        { text: 'Đây là đâu?', imageUrl: "https://images.unsplash.com/photo-1764645859246-8c6db98330a7?w=1080&q=80&auto=format&fit=crop", votingType: 'single', points: 2, options: [{ label: 'Vịnh Hạ Long', correct: true }, { label: 'Tràng An' }, { label: 'Phong Nha' }] },
+        { text: 'Phố đèn lồng này ở đâu?', imageUrl: "https://images.unsplash.com/photo-1652731011413-93d4c5aa5c7c?w=1080&q=80&auto=format&fit=crop", votingType: 'single', points: 2, options: [{ label: 'Phố cổ Hà Nội' }, { label: 'Phố cổ Hội An', correct: true }, { label: 'Cố đô Huế' }] },
+        { text: 'Đây là đâu?', imageUrl: "https://images.unsplash.com/photo-1702885967055-879bff3d8eba?w=1080&q=80&auto=format&fit=crop", votingType: 'single', points: 2, options: [{ label: 'Cát Bà' }, { label: 'Vịnh Hạ Long' }, { label: 'Tràng An – Ninh Bình', correct: true }] },
+        { text: 'Cây cầu "bàn tay khổng lồ" này nằm ở đâu?', imageUrl: "https://images.unsplash.com/photo-1790134773057-af82e32e68fd?w=1080&q=80&auto=format&fit=crop", votingType: 'single', points: 2, options: [{ label: 'Bà Nà Hills – Đà Nẵng', correct: true }, { label: 'Đà Lạt' }, { label: 'Phú Quốc' }] },
+        { text: 'Ruộng bậc thang này ở đâu?', imageUrl: "https://images.unsplash.com/photo-1694152363060-cc26bde73872?w=1080&q=80&auto=format&fit=crop", votingType: 'single', points: 2, options: [{ label: 'Đà Lạt' }, { label: 'Sa Pa – Lào Cai', correct: true }, { label: 'Mộc Châu' }] },
       ],
     }));
     created++;
