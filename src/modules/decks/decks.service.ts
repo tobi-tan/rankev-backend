@@ -218,11 +218,11 @@ export async function submitDeck(
         correct++;
       }
     }
-    score = Math.round(s * 10) / 10;
+    score = Math.round(s * 100) / 100; // 2 chữ số: đề 0,25 điểm/câu (7,75 không bị làm tròn 7,8)
     maxScoreOut = maxScore > 0 ? maxScore : null;
     correctCount = correct;
     totalGradable = gradable;
-    detail = `${score}/${Math.round(maxScore * 10) / 10} · ${correct}/${gradable} câu đúng`;
+    detail = `${score}/${Math.round(maxScore * 100) / 100} · ${correct}/${gradable} câu đúng`;
 
     // ĐIỂM CHÍNH THỨC = LẦN LÀM ĐẦU TIÊN. Làm lại vẫn được chấm + xem đáp án (luyện tập) nhưng
     // KHÔNG ghi đè điểm/xếp hạng — tránh nộp thử để xem đáp án rồi làm lại lấy điểm cao.

@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { listablePostCond } from '../posts/access';
 import { db } from '../../db';
-import { users, posts, participations } from '../../db/schema';
+import { users, posts, participations, deckQuestions, deckOptions } from '../../db/schema';
 import { conflict, notFound } from '../../lib/errors';
 import { summariesByIds, type FeedSummary } from '../feed/feed.service';
 import { toPublicUser, type PublicUser } from './users.serializer';
@@ -102,6 +102,13 @@ export interface HistoryItem {
   correctCount: number | null;
   totalGradable: number | null;
   detail: string | null;
+  /** câu trả lời từng câu (Survey/Exam) — thẻ kết quả trên feed hiện "câu hỏi → bạn chọn" */
+  answers: unknown;
+  /** Exam: tổng điểm tối đa + điểm đạt (để hiện thang điểm, Đạt/Chưa đạt) */
+  maxScore: number | null;
+  passingScore: number | null;
+  /** Exam: đáp án đúng từng câu { questionId: optionId[] } — người làm đã nộp nên được xem (như kết quả nộp bài) */
+  correct: Record<string, string[]> | null;
   participatedAt: string;
 }
 
@@ -114,6 +121,30 @@ export async function getHistory(userId: string): Promise<HistoryItem[]> {
     .where(eq(participations.userId, userId))
     .orderBy(desc(participations.updatedAt))
     .limit(100);
+  const deckIds = rows.filter((r) => r.part.type === 'deck').map((r) => r.part.postId);
+  const maxBy = new Map<string, number>();
+  if (deckIds.length) {
+    const ms = await db
+      .select({ postId: deckQuestions.postId, max: sql<string>`coalesce(sum(${deckQuestions.points}) FILTER (WHERE ${deckQuestions.points} > 0), 0)` })
+      .from(deckQuestions)
+      .where(inArray(deckQuestions.postId, deckIds))
+      .groupBy(deckQuestions.postId);
+    for (const m of ms) maxBy.set(m.postId, Number(m.max) || 0);
+  }
+  const examIds = rows.filter((r) => r.part.type === 'deck' && r.post.deckMode === 'exam').map((r) => r.part.postId);
+  const correctBy = new Map<string, Record<string, string[]>>();
+  if (examIds.length) {
+    const cs = await db
+      .select({ postId: deckQuestions.postId, qid: deckOptions.questionId, oid: deckOptions.id })
+      .from(deckOptions)
+      .innerJoin(deckQuestions, eq(deckQuestions.id, deckOptions.questionId))
+      .where(and(inArray(deckQuestions.postId, examIds), eq(deckOptions.correct, true)));
+    for (const c of cs) {
+      const m = correctBy.get(c.postId) ?? {};
+      (m[c.qid] ??= []).push(c.oid);
+      correctBy.set(c.postId, m);
+    }
+  }
 
   return rows.map((r) => ({
     postId: r.part.postId,
@@ -126,6 +157,10 @@ export async function getHistory(userId: string): Promise<HistoryItem[]> {
     correctCount: r.part.correctCount,
     totalGradable: r.part.totalGradable,
     detail: r.part.detail,
+    answers: r.part.answers ?? null,
+    maxScore: maxBy.get(r.part.postId) || null,
+    passingScore: r.post.passingScore === null || r.post.passingScore === undefined ? null : Number(r.post.passingScore),
+    correct: correctBy.get(r.part.postId) ?? null,
     participatedAt: r.part.updatedAt.toISOString(),
   }));
 }
