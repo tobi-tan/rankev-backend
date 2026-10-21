@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { parse } from '../../lib/validate';
 import { authenticate, requireUserId } from '../../plugins/auth';
 import { createDMSchema, sendMessageSchema, votePollSchema } from './messaging.schemas';
+import { pushLater } from '../push/push.service';
 import * as chat from './messaging.service';
 import * as hub from '../../realtime/hub';
 
@@ -25,8 +26,15 @@ export default async function messagingRoutes(app: FastifyInstance): Promise<voi
   // POST /conversations/:id/messages — gửi tin (text | share | poll)
   app.post<{ Params: { id: string } }>('/conversations/:id/messages', { preHandler: authenticate }, async (req) => {
     const body = parse(sendMessageSchema, req.body);
-    const msg = await chat.sendMessage(req.params.id, requireUserId(req), body);
+    const me = requireUserId(req);
+    const msg = await chat.sendMessage(req.params.id, me, body);
     hub.broadcastChatMessage(req.params.id, msg);
+    void chat.conversationMemberIds(req.params.id).then((ids) => pushLater(ids.filter((id) => id !== me), (names) => ({
+      title: names.get(me) ?? 'Tin nhắn mới',
+      body: body.kind === 'poll' ? '📊 ' + (body.poll?.question ?? 'Bình chọn') : body.kind === 'share' ? '🔗 Đã chia sẻ một bài viết' : body.body ?? '',
+      url: '/',
+      tag: 'chat-' + req.params.id,
+    }), me)).catch(() => {});
     return msg;
   });
 

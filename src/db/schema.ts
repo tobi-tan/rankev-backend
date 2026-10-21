@@ -233,6 +233,23 @@ export const saves = pgTable(
 );
 
 // Thông báo (hiện chỉ dùng cho @nhắc tên trong bình luận; mở rộng type sau).
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('web'), // 'web' | 'fcm'
+    endpoint: text('endpoint').notNull().unique(),
+    p256dh: text('p256dh'),
+    auth: text('auth'),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ userIdx: index('push_subscriptions_user_idx').on(t.userId) }),
+);
+
 export const notifications = pgTable(
   'notifications',
   {

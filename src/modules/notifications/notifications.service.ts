@@ -4,6 +4,11 @@ import { notifications, users, posts, tournaments, rankUps, userBlocks, userMute
 import { resolveHandles } from '../users/users.service';
 import { toPublicUser } from '../users/users.serializer';
 import { toNotificationView, type NotificationView } from './notifications.serializer';
+import { pushLater } from '../push/push.service';
+
+/** Đường dẫn mở bài trong app (khớp link chia sẻ /post/:id, /tournament/:id). */
+const targetUrl = (t: { postId?: string | null; tournamentId?: string | null }) =>
+  t.tournamentId ? `/tournament/${t.tournamentId}` : t.postId ? `/post/${t.postId}` : '/';
 
 const MENTION_RE = /@([a-zA-Z0-9_]{3,20})/g;
 
@@ -45,6 +50,11 @@ export async function createMentionNotifications(opts: {
     }));
   if (rows.length === 0) return [];
   await db.insert(notifications).values(rows);
+  pushLater(rows.map((r) => r.userId), (names) => ({
+    title: `${names.get(opts.actorId) ?? 'Ai đó'} đã nhắc bạn`,
+    body: snippet,
+    url: targetUrl(opts),
+  }), opts.actorId);
   return rows.map((r) => r.userId); // người đã nhận @nhắc (để không báo trùng "bài mới")
 }
 
@@ -73,6 +83,14 @@ export async function notifyNewPost(authorId: string, target: { postId?: string;
     .map((f) => ({ userId: f.userId, type: 'new_post', actorId: authorId, postId: target.postId ?? null, tournamentId: target.tournamentId ?? null }));
   if (rows.length === 0) return;
   await db.insert(notifications).values(rows);
+  let title: string | null = null;
+  if (target.postId) [{ title }] = await db.select({ title: posts.title }).from(posts).where(eq(posts.id, target.postId));
+  else if (target.tournamentId) [{ title }] = await db.select({ title: tournaments.title }).from(tournaments).where(eq(tournaments.id, target.tournamentId));
+  pushLater(rows.map((r) => r.userId), (names) => ({
+    title: `${names.get(authorId) ?? 'Ai đó'} vừa đăng ${target.tournamentId ? 'giải đấu' : 'bài'} mới`,
+    body: title ?? '',
+    url: targetUrl(target),
+  }), authorId);
 }
 
 export async function listNotifications(userId: string, limit = 40): Promise<NotificationView[]> {

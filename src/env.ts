@@ -44,6 +44,11 @@ const EnvSchema = z.object({
   ADMIN_EMAILS: z.string().default(''),
   // Email hỗ trợ hiện trên các trang chính sách (kháng nghị, bản quyền, xoá tài khoản, an toàn trẻ em).
   SUPPORT_EMAIL: z.string().default('support@rankev.example.com'),
+
+  // --- Thông báo đẩy (Web Push / VAPID). Bỏ trống = tắt. Tạo: `npx web-push generate-vapid-keys`. ---
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:support@rankev.example.com'),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

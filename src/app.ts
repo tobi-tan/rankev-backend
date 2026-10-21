@@ -18,6 +18,7 @@ import adminRoutes from './modules/admin/admin.routes';
 import legalRoutes from './modules/legal/legal.routes';
 import commentsRoutes from './modules/comments/comments.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
+import pushRoutes from './modules/push/push.routes';
 import onboardingRoutes from './modules/onboarding/onboarding.routes';
 import { statsRoutes } from './modules/stats/stats.routes';
 import bookmarksRoutes from './modules/bookmarks/bookmarks.routes';
@@ -103,6 +104,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(legalRoutes);
   await app.register(commentsRoutes);
   await app.register(notificationsRoutes);
+  await app.register(pushRoutes);
   await app.register(onboardingRoutes);
   await app.register(statsRoutes);
   await app.register(bookmarksRoutes);

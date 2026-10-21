@@ -4,6 +4,7 @@ import { comments, notifications, passwordResets, posts, refreshTokens, reports,
 import { adminEmails, env } from '../../env';
 import { badRequest, forbidden, notFound } from '../../lib/errors';
 import { sendMail } from '../../lib/mailer';
+import { pushLater } from '../push/push.service';
 
 /**
  * KIỂM DUYỆT (App Store 1.2 · Google Play nội dung do người dùng tạo):
@@ -169,6 +170,7 @@ export async function resolveReport(adminId: string, targetType: TargetType, tar
   const reporters = [...new Set(open.map((o) => o.reporterId))];
   if (reporters.length) {
     await db.insert(notifications).values(reporters.map((uid) => ({ userId: uid, type: 'report_resolved', text: RESOLUTION_TEXT[action] })));
+    pushLater(reporters, { title: 'Rankev đã xử lý báo cáo của bạn', body: RESOLUTION_TEXT[action] ?? '', url: '/' });
   }
 }
 
