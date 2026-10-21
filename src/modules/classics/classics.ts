@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { deckQuestions, posts, rankieOptions, series, users } from '../../db/schema';
+import { deckQuestions, pathAnswers, pathEndings, pathQuestions, posts, rankieOptions, series, users } from '../../db/schema';
 import { CLASSIC_IMAGES } from './classics-images';
 import { SHOWCASE_EXAM, SHOWCASE_PATH, SHOWCASE_SURVEY } from './showcase';
 import { createRankie } from '../posts/posts.service';
@@ -99,6 +99,40 @@ async function existingTitles(authorId: string): Promise<Set<string>> {
   return new Set(rows.map((r) => r.title));
 }
 
+type PathDef = {
+  title: string;
+  media?: { url?: string };
+  questions: readonly { text: string; sceneImageUrl?: string; answers: readonly { label: string; imageUrl?: string }[] }[];
+  endings: readonly { name: string; imageUrl?: string }[];
+};
+/**
+ * Ảnh của truyện mẫu đổi (vd ảnh chụp → tranh anime) → cập nhật bài ĐÃ tạo. Chỉ thay ảnh do hệ
+ * thống đặt (Unsplash / /classics/ / trống), không đụng ảnh người khác sửa tay.
+ */
+async function syncPathImages(authorId: string, def: PathDef): Promise<void> {
+  const [p] = await db.select({ id: posts.id, media: posts.media }).from(posts).where(and(eq(posts.authorId, authorId), eq(posts.title, def.title), isNull(posts.deletedAt)));
+  if (!p) return;
+  const sys = (u: string | null | undefined) => !u || /images\.unsplash\.com|\/classics\//.test(u);
+  const want = def.media?.url;
+  if (want && p.media?.url !== want && sys(p.media?.url)) await db.update(posts).set({ media: { ...(p.media ?? {}), url: want, type: 'image' } }).where(eq(posts.id, p.id));
+  const qs = await db.select().from(pathQuestions).where(eq(pathQuestions.postId, p.id));
+  const ans = qs.length ? await db.select().from(pathAnswers).where(inArray(pathAnswers.questionId, qs.map((q) => q.id))) : [];
+  for (const dq of def.questions) {
+    const q = qs.find((x) => x.text === dq.text);
+    if (!q) continue;
+    if (dq.sceneImageUrl && q.sceneImageUrl !== dq.sceneImageUrl && sys(q.sceneImageUrl)) await db.update(pathQuestions).set({ sceneImageUrl: dq.sceneImageUrl }).where(eq(pathQuestions.id, q.id));
+    for (const da of dq.answers) {
+      const a = ans.find((x) => x.questionId === q.id && x.label === da.label);
+      if (a && da.imageUrl && a.imageUrl !== da.imageUrl && sys(a.imageUrl)) await db.update(pathAnswers).set({ imageUrl: da.imageUrl }).where(eq(pathAnswers.id, a.id));
+    }
+  }
+  const ends = await db.select().from(pathEndings).where(eq(pathEndings.postId, p.id));
+  for (const de of def.endings) {
+    const e = ends.find((x) => x.name === de.name);
+    if (e && de.imageUrl && e.imageUrl !== de.imageUrl && sys(e.imageUrl)) await db.update(pathEndings).set({ imageUrl: de.imageUrl }).where(eq(pathEndings.id, e.id));
+  }
+}
+
 export async function ensureClassics(log: (m: string) => void = () => {}): Promise<number> {
   const authorId = await ensureOfficial();
   const have = await existingTitles(authorId);
@@ -193,6 +227,7 @@ export async function ensureClassics(log: (m: string) => void = () => {}): Promi
   }
   // ===== Nội dung mẫu: truyện học đường nhiều nhánh · đề thi thử Toán 40 câu · khảo sát WHO-5 =====
   if (!have.has(SHOWCASE_PATH.title)) { await createPath(authorId, createPathSchema.parse(SHOWCASE_PATH)); created++; }
+  else await syncPathImages(authorId, SHOWCASE_PATH);
   if (!have.has(SHOWCASE_EXAM.title)) { await createDeck(authorId, createDeckSchema.parse(SHOWCASE_EXAM)); created++; }
   else {
     // đề tạo trước migration 0037 bị làm tròn 0,25 → 0,3: sửa lại cho đúng thang 10

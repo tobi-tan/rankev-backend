@@ -12,3 +12,4 @@ coverage/
 
 # Claude Code local (personal) settings
 .claude/settings.local.json
+scripts/.sakura-ref.png

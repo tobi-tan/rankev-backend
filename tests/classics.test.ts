@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { pool, db } from '../src/db';
-import { deckOptions, deckQuestions, passwordResets, posts, rankieOptions, series, seriesPosts, users } from '../src/db/schema';
+import { deckOptions, deckQuestions, passwordResets, pathEndings, pathQuestions, posts, rankieOptions, series, seriesPosts, users } from '../src/db/schema';
 import { buildApp, registerUser, bearer } from './helpers';
 import { ensureClassics, LEGACY_CLASSICS_SERIES, RETIRED_MATCHUPS } from '../src/modules/classics/classics';
 import { outbox } from '../src/lib/mailer';
@@ -134,5 +134,25 @@ describe('nội dung kinh điển của @rankev', () => {
     expect(Number(exam.passingScore)).toBe(5);
     expect(mine.some((p) => p.title === 'Ngày đầu ở trường Sakuragaoka 🌸')).toBe(true);
     expect(mine.some((p) => p.title === 'Chỉ số hạnh phúc WHO-5: 2 tuần qua bạn thế nào?')).toBe(true);
+  });
+
+  it('đổi ảnh truyện mẫu (vd sang tranh anime) → bài đã tạo tự cập nhật ảnh hệ thống', async () => {
+    await ensureClassics();
+    const [official] = await db.select().from(users).where(eq(users.handle, 'rankev'));
+    const [p] = await db.select({ id: posts.id }).from(posts).where(and(eq(posts.authorId, official.id), eq(posts.title, 'Ngày đầu ở trường Sakuragaoka 🌸')));
+    const [q] = await db.select().from(pathQuestions).where(and(eq(pathQuestions.postId, p.id), eq(pathQuestions.isEntry, true)));
+    const [e] = await db.select().from(pathEndings).where(eq(pathEndings.postId, p.id)).limit(1);
+    const oldScene = q.sceneImageUrl, oldEnd = e.imageUrl;
+    // giả lập ảnh cũ trong DB khác bản định nghĩa → chạy lại phải đồng bộ về bản định nghĩa
+    await db.update(pathQuestions).set({ sceneImageUrl: 'https://images.unsplash.com/photo-old?w=1080' }).where(eq(pathQuestions.id, q.id));
+    await db.update(pathEndings).set({ imageUrl: null }).where(eq(pathEndings.id, e.id));
+    await ensureClassics();
+    expect((await db.select().from(pathQuestions).where(eq(pathQuestions.id, q.id)))[0].sceneImageUrl).toBe(oldScene);
+    expect((await db.select().from(pathEndings).where(eq(pathEndings.id, e.id)))[0].imageUrl).toBe(oldEnd);
+    // ảnh người dùng tự đặt (không phải ảnh hệ thống) thì giữ nguyên
+    await db.update(pathQuestions).set({ sceneImageUrl: 'https://res.cloudinary.com/x/image/upload/mine.jpg' }).where(eq(pathQuestions.id, q.id));
+    await ensureClassics();
+    expect((await db.select().from(pathQuestions).where(eq(pathQuestions.id, q.id)))[0].sceneImageUrl).toBe('https://res.cloudinary.com/x/image/upload/mine.jpg');
+    await db.update(pathQuestions).set({ sceneImageUrl: oldScene }).where(eq(pathQuestions.id, q.id));
   });
 });
