@@ -12,7 +12,7 @@ export const SHOWCASE_PATH = {
     "nhatban"
   ],
   "media": {
-    "url": "https://images.unsplash.com/photo-1649693364265-b4d5af897d99?w=1080&q=80&auto=format&fit=crop",
+    "url": "https://rankev-web.vercel.app/classics/sakura/cover.webp",
     "type": "image"
   },
   "revealMode": "hidden",
@@ -22,24 +22,24 @@ export const SHOWCASE_PATH = {
     {
       "key": "s1",
       "isEntry": true,
-      "sceneImageUrl": "https://images.unsplash.com/photo-1651039419231-f0db769b2c33?w=1080&q=80&auto=format&fit=crop",
+      "sceneImageUrl": "https://rankev-web.vercel.app/classics/sakura/s1.webp",
       "text": "Sáng đầu tiên ở trường cao trung Sakuragaoka. Hoa anh đào rơi kín cổng trường, chuông vào lớp sắp reo. Bạn sẽ…",
       "answers": [
         {
           "label": "Chạy vội vào lớp kẻo trễ",
-          "imageUrl": "https://images.unsplash.com/photo-1617721930761-42fe8e5efad0?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s1-a1.webp",
           "targetType": "question",
           "targetKey": "s2"
         },
         {
           "label": "Nhặt chiếc khăn tay ai đó đánh rơi",
-          "imageUrl": "https://images.unsplash.com/photo-1551272744-19456affaa89?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s1-a2.webp",
           "targetType": "question",
           "targetKey": "s3"
         },
         {
           "label": "Lẻn ra sau trường khám phá",
-          "imageUrl": "https://images.unsplash.com/photo-1708656376421-784c3b2adb2f?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s1-a3.webp",
           "targetType": "question",
           "targetKey": "s4"
         }
@@ -47,18 +47,18 @@ export const SHOWCASE_PATH = {
     },
     {
       "key": "s2",
-      "sceneImageUrl": "https://images.unsplash.com/photo-1635424239131-32dc44986b56?w=1080&q=80&auto=format&fit=crop",
+      "sceneImageUrl": "https://rankev-web.vercel.app/classics/sakura/s2.webp",
       "text": "Bạn lao vào lớp đúng lúc chuông reo… và va phải Kaito — lớp trưởng nổi tiếng nghiêm khắc. Sách vở của cậu ấy rơi tung toé.",
       "answers": [
         {
           "label": "Xin lỗi rối rít, giúp nhặt sách",
-          "imageUrl": "https://images.unsplash.com/photo-1447069387593-a5de0862481e?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s2-a1.webp",
           "targetType": "question",
           "targetKey": "s5"
         },
         {
           "label": "Cười trừ rồi chuồn về chỗ cạnh cửa sổ",
-          "imageUrl": "https://images.unsplash.com/photo-1751704623306-fefadee241a9?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s2-a2.webp",
           "targetType": "question",
           "targetKey": "s6"
         }
@@ -66,18 +66,18 @@ export const SHOWCASE_PATH = {
     },
     {
       "key": "s3",
-      "sceneImageUrl": "https://images.unsplash.com/photo-1556066138-cfac27159329?w=1080&q=80&auto=format&fit=crop",
+      "sceneImageUrl": "https://rankev-web.vercel.app/classics/sakura/s3.webp",
       "text": "Chủ chiếc khăn là Hana, cô bạn lớp bên. Đó là món quà của bà cô ấy, Hana đã tìm khắp sân trường.",
       "answers": [
         {
           "label": "Trả khăn và rủ Hana ăn trưa cùng",
-          "imageUrl": "https://images.unsplash.com/photo-1696677049263-cc38af1c7681?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s3-a1.webp",
           "targetType": "question",
           "targetKey": "s6"
         },
         {
           "label": "Trả khăn rồi chạy vội vào lớp",
-          "imageUrl": "https://images.unsplash.com/photo-1779682663979-df3179ce580d?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s3-a2.webp",
           "targetType": "question",
           "targetKey": "s5"
         }
@@ -85,18 +85,18 @@ export const SHOWCASE_PATH = {
     },
     {
       "key": "s4",
-      "sceneImageUrl": "https://images.unsplash.com/photo-1461727885569-b2ddec0c4328?w=1080&q=80&auto=format&fit=crop",
+      "sceneImageUrl": "https://rankev-web.vercel.app/classics/sakura/s4.webp",
       "text": "Phía sau trường có tiếng đàn vọng ra từ phòng câu lạc bộ âm nhạc. Trên mái nhà kho, một con mèo đen đang nhìn bạn chằm chằm.",
       "answers": [
         {
           "label": "Gõ cửa câu lạc bộ âm nhạc",
-          "imageUrl": "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s4-a1.webp",
           "targetType": "ending",
           "targetKey": "Ngôi sao lễ hội"
         },
         {
           "label": "Đi theo con mèo đen",
-          "imageUrl": "https://images.unsplash.com/photo-1790014824903-9bcfb61764ef?w=1080&q=80&auto=format&fit=crop",
+          "imageUrl": "https://rankev-web.vercel.app/classics/sakura/s4-a2.webp",
           "targetType": "question",
           "targetKey": "s7"
         }
@@ -163,32 +163,32 @@ export const SHOWCASE_PATH = {
   "endings": [
     {
       "name": "Ngôi sao lễ hội",
-      "imageUrl": "https://images.unsplash.com/photo-1578275787710-b717b7494f84?w=1080&q=80&auto=format&fit=crop",
+      "imageUrl": "https://rankev-web.vercel.app/classics/sakura/e1.webp",
       "comment": "Bạn trở thành guitar chính của ban nhạc trường và cháy hết mình ở lễ hội mùa thu. Cả trường gọi tên bạn!"
     },
     {
       "name": "Lớp trưởng tương lai",
-      "imageUrl": "https://images.unsplash.com/photo-1668092548064-730e05fd0324?w=1080&q=80&auto=format&fit=crop",
+      "imageUrl": "https://rankev-web.vercel.app/classics/sakura/e2.webp",
       "comment": "Chu đáo, có trách nhiệm — năm sau bạn chính là người dẫn dắt hội học sinh."
     },
     {
       "name": "Ngôi sao sân cỏ",
-      "imageUrl": "https://images.unsplash.com/photo-1545474832-344b02935302?w=1080&q=80&auto=format&fit=crop",
+      "imageUrl": "https://rankev-web.vercel.app/classics/sakura/e3.webp",
       "comment": "Bạn ghi bàn quyết định ở giải bóng đá liên trường. Tuổi trẻ là phải chạy hết sức!"
     },
     {
       "name": "Thanh xuân rực rỡ",
-      "imageUrl": "https://images.unsplash.com/photo-1548386135-b47fa5a79ae6?w=1080&q=80&auto=format&fit=crop",
+      "imageUrl": "https://rankev-web.vercel.app/classics/sakura/e4.webp",
       "comment": "Dưới bầu trời pháo hoa, một tình bạn đặc biệt bắt đầu. Có những mùa hè nhớ cả đời."
     },
     {
       "name": "Linh hồn của lớp",
-      "imageUrl": "https://images.unsplash.com/photo-1590627339432-16bcfcec24c7?w=1080&q=80&auto=format&fit=crop",
+      "imageUrl": "https://rankev-web.vercel.app/classics/sakura/e5.webp",
       "comment": "Ở đâu có bạn, ở đó có tiếng cười. Cả lớp đều thân nhau hơn nhờ bạn."
     },
     {
       "name": "Người giữ bí mật",
-      "imageUrl": "https://images.unsplash.com/photo-1534289855405-ab820a118fc1?w=1080&q=80&auto=format&fit=crop",
+      "imageUrl": "https://rankev-web.vercel.app/classics/sakura/e6.webp",
       "comment": "Cuốn nhật ký kể về một lời hứa chưa hoàn thành. Từ hôm nay, bạn là người giữ lời hứa ấy…"
     }
   ]
